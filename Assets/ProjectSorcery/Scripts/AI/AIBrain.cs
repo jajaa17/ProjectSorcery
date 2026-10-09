@@ -54,13 +54,13 @@ namespace ProjectSorcery
             {
                 case Difficulty.Dummy: return new Profile { Reaction = 99f, Mash = 0f, BurstAfter = 99 };
                 case Difficulty.Easy:
-                    return new Profile { Reaction = 0.42f, Block = 0.15f, Dodge = 0.1f, ComboSkill = 0.15f, BlackFlash = 0.03f, Specials = 0.45f, DomainIQ = 0.1f, Mash = 3.5f, Mistakes = 0.25f, Aggression = 0.45f, BurstAfter = 99, SimpleDomain = 0.1f, Chant = 0 };
+                    return new Profile { Reaction = 0.42f, Block = 0.15f, Dodge = 0.1f, ComboSkill = 0.15f, BlackFlash = 0.01f, Specials = 0.45f, DomainIQ = 0.1f, Mash = 3.5f, Mistakes = 0.25f, Aggression = 0.45f, BurstAfter = 99, SimpleDomain = 0.1f, Chant = 0 };
                 case Difficulty.Medium:
-                    return new Profile { Reaction = 0.24f, Block = 0.45f, Dodge = 0.4f, ComboSkill = 0.55f, BlackFlash = 0.2f, Specials = 0.75f, DomainIQ = 0.55f, Mash = 7f, Mistakes = 0.08f, Aggression = 0.6f, BurstAfter = 7, SimpleDomain = 0.45f, Chant = 1 };
+                    return new Profile { Reaction = 0.24f, Block = 0.45f, Dodge = 0.4f, ComboSkill = 0.55f, BlackFlash = 0.06f, Specials = 0.75f, DomainIQ = 0.55f, Mash = 7f, Mistakes = 0.08f, Aggression = 0.6f, BurstAfter = 7, SimpleDomain = 0.45f, Chant = 1 };
                 case Difficulty.Hard:
-                    return new Profile { Reaction = 0.12f, Block = 0.78f, Dodge = 0.75f, ComboSkill = 0.95f, BlackFlash = 0.55f, Specials = 1f, DomainIQ = 1f, Mash = 11f, Mistakes = 0.02f, Aggression = 0.75f, BurstAfter = 4, SimpleDomain = 0.85f, Chant = 2 };
+                    return new Profile { Reaction = 0.12f, Block = 0.78f, Dodge = 0.75f, ComboSkill = 0.95f, BlackFlash = 0.14f, Specials = 1f, DomainIQ = 1f, Mash = 11f, Mistakes = 0.02f, Aggression = 0.75f, BurstAfter = 4, SimpleDomain = 0.85f, Chant = 2 };
                 default: // Nightmare (raid boss)
-                    return new Profile { Reaction = 0.1f, Block = 0.55f, Dodge = 0.6f, ComboSkill = 1f, BlackFlash = 0.35f, Specials = 1.2f, DomainIQ = 1f, Mash = 12f, Mistakes = 0f, Aggression = 0.9f, BurstAfter = 3, SimpleDomain = 0.9f, Chant = 2 };
+                    return new Profile { Reaction = 0.1f, Block = 0.55f, Dodge = 0.6f, ComboSkill = 1f, BlackFlash = 0.16f, Specials = 1.2f, DomainIQ = 1f, Mash = 12f, Mistakes = 0f, Aggression = 0.9f, BurstAfter = 3, SimpleDomain = 0.9f, Chant = 2 };
             }
         }
 

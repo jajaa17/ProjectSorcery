@@ -9,6 +9,7 @@ namespace ProjectSorcery
         public Camera Cam;
 
         float shake, punch;
+        Vector2 punchAt; bool punchAtSet;
         Fighter focus; float focusTimer;
         Vector2 pos; float size = 6.5f;
         float seedX, seedY;
@@ -38,6 +39,13 @@ namespace ProjectSorcery
 
         public static void Shake(float amount) { if (I != null) I.shake = Mathf.Max(I.shake, amount * Settings.Shake); }
         public static void Punch(float amount) { if (I != null) I.punch = Mathf.Max(I.punch, amount * Mathf.Lerp(0.5f, 1f, Settings.Shake)); }
+        /// <summary>Zoom-punch that also nudges the frame toward the impact point.</summary>
+        public static void PunchAt(float amount, Vector2 at)
+        {
+            if (I == null) return;
+            Punch(amount);
+            I.punchAt = at; I.punchAtSet = true;
+        }
         public static void Focus(Fighter f, float seconds) { if (I != null) { I.focus = f; I.focusTimer = seconds; } }
 
         public void SnapTo(Match m)
@@ -107,7 +115,9 @@ namespace ProjectSorcery
             Vector2 off = new Vector2((Mathf.PerlinNoise(seedX, t) - 0.5f) * 2f, (Mathf.PerlinNoise(seedY, t) - 0.5f) * 2f) * s;
             float z = size * (1f - punch * 0.12f);
             if (Cam != null) Cam.orthographicSize = z;
-            transform.position = new Vector3(pos.x + off.x, pos.y + off.y, -10f);
+            if (punch <= 0f) punchAtSet = false;
+            Vector2 lean = punchAtSet ? (punchAt - pos) * Mathf.Clamp01(punch) * 0.35f : Vector2.zero;
+            transform.position = new Vector3(pos.x + off.x + lean.x, pos.y + off.y + lean.y, -10f);
             transform.rotation = Quaternion.Euler(0f, 0f, off.x * 1.5f);
         }
     }

@@ -26,7 +26,11 @@ namespace ProjectSorcery
         public Vector2 Lunge = new Vector2(3f, 0f);
         public bool Air;
         public float CeGain = 3f;
+        public bool Chargeable;          // hold the button to charge (heavy smash)
+        public bool DashStrike;          // performed out of a dash
+        public Clip Clip;                // visual choreography (never read by the simulation)
         public float Total => Startup + Active + Recovery;
+        public AttackDef Copy() => (AttackDef)MemberwiseClone();
     }
 
     public enum ProjVis { Orb, Bolt, Slash, Arrow, Nail, Fire, Blood, Rock, Bird, Insect, Lightning, Ice, Water, Star, Sphere, Disc, Wave, Needle, Bullet, Skull, Sound, Wood, Card, Metal }

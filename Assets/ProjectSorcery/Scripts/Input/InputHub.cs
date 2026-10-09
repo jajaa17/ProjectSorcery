@@ -85,6 +85,7 @@ namespace ProjectSorcery
     {
         public KeyCode Left, Right, Jump, Down, Light, Heavy, Block, Dash, S1, S2, S3, Ult, Confirm, Back;
         public KeyCode[] Alt; // same order as primary bits: Left,Right,Jump,Down,Light,Heavy,Block,Dash,S1,S2,S3,Ult
+        public bool Mouse;    // left click = light, right click = heavy, middle click = dash
         public string Description;
     }
 
@@ -113,6 +114,12 @@ namespace ProjectSorcery
             if (K(s.S2, 9)) b |= IB.S2;
             if (K(s.S3, 10)) b |= IB.S3;
             if (K(s.Ult, 11)) b |= IB.Ult;
+            if (s.Mouse && UseAlt)
+            {
+                if (KeyInput.MouseButton(0)) b |= IB.Light;
+                if (KeyInput.MouseButton(1)) b |= IB.Heavy;
+                if (KeyInput.MouseButton(2)) b |= IB.Dash;
+            }
             return (ushort)b;
         }
 
@@ -222,6 +229,12 @@ namespace ProjectSorcery
     {
 #if ENABLE_INPUT_SYSTEM
         public static bool KeyboardPresent => Keyboard.current != null;
+        public static bool MouseButton(int i)
+        {
+            var m = Mouse.current;
+            if (m == null) return false;
+            return i == 0 ? m.leftButton.isPressed : i == 1 ? m.rightButton.isPressed : m.middleButton.isPressed;
+        }
         public static bool Held(KeyCode k)
         {
             var kb = Keyboard.current;
@@ -275,6 +288,7 @@ namespace ProjectSorcery
 #else
         public static bool KeyboardPresent => true;
         public static bool Held(KeyCode k) => k != KeyCode.None && Input.GetKey(k);
+        public static bool MouseButton(int i) => Input.GetMouseButton(i);
         public static bool Down(KeyCode k) => k != KeyCode.None && Input.GetKeyDown(k);
 #endif
     }
@@ -295,7 +309,8 @@ namespace ProjectSorcery
             Alt = new[] { KeyCode.None, KeyCode.None, KeyCode.Space, KeyCode.None,
                           KeyCode.J, KeyCode.K, KeyCode.L, KeyCode.None,
                           KeyCode.U, KeyCode.I, KeyCode.O, KeyCode.P },
-            Description = "Move WASD  |  Light F/J  Heavy G/K  Block H/L  Dash L-Shift  |  Skills R T Y (U I O)  Ultimate V/P"
+            Mouse = true,
+            Description = "Move WASD  |  Light F/J/L-Click  Heavy G/K/R-Click (hold to charge)  Block H/L  Dash L-Shift/M-Click  |  Skills R T Y (U I O)  Ultimate V/P"
         };
 
         public static readonly KeyboardScheme P2 = new KeyboardScheme

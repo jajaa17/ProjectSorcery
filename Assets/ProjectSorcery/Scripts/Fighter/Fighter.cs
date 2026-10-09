@@ -50,6 +50,7 @@ namespace ProjectSorcery
         Act buffered; float bufferTime; bool bufferedDown;
 
         // ---------- abilities ----------
+        public MoveSet Set;                // normal attacks (style + personal flavour)
         public Ability[] Kit;
         public readonly float[] Cd = new float[4];
         public Ability Casting;
@@ -71,10 +72,14 @@ namespace ProjectSorcery
         // ---------- combos & black flash ----------
         public int ComboHits; public float ComboTimer, ComboDamage;
         public int Juggle;
-        float bfOpen, bfClose; bool bfPrimed;
+        float bfOpen, bfClose, bfReadyAt; bool bfPrimed;
+        public float ChargeTime;           // heavy held: charge built so far
+        bool chargeFull, chargeReleased;
+        public const float MaxCharge = 0.6f;
         public int BfStreak; float bfStreakTimer;
         public int ForcedBlackFlashes;     // next N heavy hits are guaranteed black flashes
         public float StaggerMeter;
+        public bool Launched;              // airborne from a real launch (lands in a knockdown)
 
         // ---------- misc ----------
         public float[] Adapt = new float[(int)DamageType.Count];
@@ -93,6 +98,7 @@ namespace ProjectSorcery
         public StickRig Rig;
         public float FlashTimer;           // white hit flash
         public float HitImpulse;           // visual-only: recoil strength of the last hit (read by the rig)
+        public float GuardImpulse;         // visual-only: blocked-hit flinch
         public int HitDir;                 // visual-only: direction the last hit pushed
         public string LastChant;
 
@@ -105,6 +111,7 @@ namespace ProjectSorcery
         public bool CanAct => !Dead && State != FState.Hitstun && State != FState.Knockdown && State != FState.Locked && !HardCC;
         public bool HardCC => Has(StatusType.Stun) || Has(StatusType.Paralysis) || Has(StatusType.Freeze);
         public bool InStrike => strike != null;
+        public StrikeDef CurStrike => strike;
         public float HpFrac => MaxHp <= 0 ? 0 : Hp / MaxHp;
         public float CeFrac => MaxCe <= 0 ? 0 : Ce / MaxCe;
         public bool IsRestricted => Def.NoCE;
@@ -125,6 +132,7 @@ namespace ProjectSorcery
         public void Init(Match m, CharacterDef def, int slot, int team)
         {
             M = m; Def = def; Slot = slot; Team = team;
+            Set = MoveLib.For(def);
             Kit = def.Kit != null ? def.Kit() : new Ability[4];
             if (Kit.Length < 4) System.Array.Resize(ref Kit, 4);
             ResetForRound(Vector2.zero, 1);
@@ -144,7 +152,7 @@ namespace ProjectSorcery
             for (int i = 0; i < 4; i++) Cd[i] = 0f;
             Casting = null; strike = null; counter = null;
             Hitstun = Hitstop = Invuln = 0f; BurstCd = 0f;
-            ComboHits = 0; Juggle = 0; BfStreak = 0; StaggerMeter = 0; ForcedBlackFlashes = 0;
+            ComboHits = 0; Juggle = 0; BfStreak = 0; StaggerMeter = 0; ForcedBlackFlashes = 0; bfReadyAt = 0f; ChargeTime = 0f;
             for (int i = 0; i < Adapt.Length; i++) Adapt[i] = 0f;
             InfinityHitsTaken = 0; LuckUsed = false; DamageTakenWindow = 0f;
             buffered = Act.None;
@@ -188,6 +196,7 @@ namespace ProjectSorcery
             if (Hitstop > 0f)
             {
                 Hitstop -= dt;
+                BufferInput(false);   // presses during the impact freeze still count (responsive combos)
                 return;
             }
 
@@ -200,7 +209,7 @@ namespace ProjectSorcery
             if (bfStreakTimer > 0f) { bfStreakTimer -= dt; if (bfStreakTimer <= 0f) BfStreak = 0; }
             if (DamageTakenWindow > 0f) DamageTakenWindow = Mathf.Max(0f, DamageTakenWindow - MaxHp * 0.03f * dt);
 
-            BufferInput();
+            BufferInput(true);
 
             if (HardCC && State != FState.Hitstun && State != FState.Knockdown)
             {
@@ -243,7 +252,7 @@ namespace ProjectSorcery
         }
 
         // ---------------------------------------------------------------- buffer
-        void BufferInput()
+        void BufferInput(bool decay)
         {
             Act a = Act.None;
             if (In.Pressed(IB.Ult)) a = Act.Ult;
@@ -259,7 +268,7 @@ namespace ProjectSorcery
                 buffered = a; bufferTime = 0.16f; bufferedDown = In.Down;
                 if (a == Act.Heavy && M.Time >= bfOpen && M.Time <= bfClose) bfPrimed = true;
             }
-            else if (bufferTime > 0f)
+            else if (bufferTime > 0f && decay)
             {
                 bufferTime -= M.Dt;
                 if (bufferTime <= 0f) buffered = Act.None;
@@ -371,14 +380,14 @@ namespace ProjectSorcery
             AttackDef a;
             if (!grounded)
             {
-                a = Moves.AirChain[Mathf.Clamp(AirStep, 0, Moves.AirChain.Length - 1)];
-                AirStep = (AirStep + 1) % Moves.AirChain.Length;
+                a = Set.Air[Mathf.Clamp(AirStep, 0, Set.Air.Length - 1)];
+                AirStep = (AirStep + 1) % Set.Air.Length;
             }
-            else if (bufferedDown || In.Down) { a = Moves.Sweep; ComboStep = 0; }
+            else if (bufferedDown || In.Down) { a = Set.Sweep; ComboStep = 0; }
             else
             {
-                a = Moves.LightChain[Mathf.Clamp(ComboStep, 0, Moves.LightChain.Length - 1)];
-                ComboStep = (ComboStep + 1) % Moves.LightChain.Length;
+                a = Set.Light[Mathf.Clamp(ComboStep, 0, Set.Light.Length - 1)];
+                ComboStep = (ComboStep + 1) % Set.Light.Length;
             }
             StartAttack(a);
         }
@@ -386,8 +395,8 @@ namespace ProjectSorcery
         void StartHeavy(bool grounded)
         {
             AttackDef a;
-            if (!grounded) a = (bufferedDown || In.Down) ? Moves.DiveKick : Moves.AirHeavy;
-            else a = (bufferedDown || In.Down) ? Moves.Launcher : Moves.Heavy;
+            if (!grounded) a = (bufferedDown || In.Down) ? Set.Dive : Set.AirHeavy;
+            else a = (bufferedDown || In.Down) ? Set.Launcher : Set.Heavy;
             ComboStep = 0;
             StartAttack(a);
         }
@@ -395,6 +404,7 @@ namespace ProjectSorcery
         void StartAttack(AttackDef a)
         {
             CurAttack = a;
+            ChargeTime = 0f; chargeFull = false; chargeReleased = false;
             hitThisAttack.Clear();
             minionsHitThisAttack.Clear();
             attackConnected = false;
@@ -413,7 +423,31 @@ namespace ProjectSorcery
             if (a == null) { SetState(Grounded ? FState.Idle : FState.Air); return; }
             float t = StateTime;
             if (Grounded && !a.Air) Vel.x = Mathf.MoveTowards(Vel.x, 0f, 28f * dt);
-            if (t >= a.Startup && t < a.Startup + a.Active) MeleeCheck(a);
+
+            // hold Heavy to charge: the wind-up freezes, cursed energy gathers; a full charge bursts out as an aura blast
+            if (a.Chargeable && !chargeReleased && t >= a.Startup * 0.8f)
+            {
+                bool canCharge = IsRestricted || Ce >= 2f;
+                if (In.Held(IB.Heavy) && ChargeTime < MaxCharge && canCharge)
+                {
+                    ChargeTime += dt;
+                    StateTime = a.Startup * 0.8f;
+                    if (!IsRestricted) Ce = Mathf.Max(0f, Ce - 22f * dt);
+                    if (ChargeTime >= MaxCharge && !chargeFull)
+                    {
+                        chargeFull = true;
+                        VFX.Ring(Center, Def.Look.Aura, 1.6f * Size, 0.25f, 0.08f);
+                        Audio.Play(Sfx.Charge, Center, 0.8f, 1.3f);
+                    }
+                    return;
+                }
+                chargeReleased = true;
+            }
+            if (t >= a.Startup && t < a.Startup + a.Active)
+            {
+                if (chargeFull && t - dt < a.Startup) AuraBlast(a);
+                MeleeCheck(a);
+            }
 
             bool recovering = t >= a.Startup + a.Active;
             // cancel windows: after a connected hit, chain into anything
@@ -435,6 +469,20 @@ namespace ProjectSorcery
             }
             if (a.Air && Grounded && t > a.Startup) { CurAttack = null; SetState(FState.Idle); Land(); }
         }
+
+        /// <summary>Full-charge heavy: a short-range shockwave of raw cursed energy in front of the fist.</summary>
+        void AuraBlast(AttackDef a)
+        {
+            Vector2 c = AttackCenter(a) + new Vector2(0.6f * Facing, 0f) * Size;
+            var h = HitInfo.Make(this, HitSource.Other, 30f * PowerNoBase(), new Vector2(9f * Facing, 4f), 0.5f, HitFlags.Heavy | HitFlags.GuardBreak | HitFlags.NoCombo, IsRestricted ? DamageType.Blunt : DamageType.Energy, c, Def.Look.Aura);
+            h.Hitstop = 0.1f;
+            M.Area(this, c, 1.7f * Size, h, true);
+            VFX.Burst(BurstVis.Shockwave, c, 1.8f * Size, Def.Look.Aura);
+            CameraRig.Shake(0.35f);
+            Audio.Play(Sfx.ImpactEnergy, c, 1f, 0.8f);
+        }
+
+        float ChargeMul => 1f + 0.7f * Mathf.Clamp01(ChargeTime / MaxCharge);
 
         Vector2 AttackCenter(AttackDef a)
         {
@@ -476,10 +524,11 @@ namespace ProjectSorcery
         {
             bool heavy = (a.Flags & HitFlags.Heavy) != 0;
             var type = Def.Bladed ? DamageType.Slash : a.Type;
-            float dmg = a.Damage * Power;
+            float dmg = a.Damage * Power * (a.Chargeable ? ChargeMul : 1f);
             var h = HitInfo.Make(this, HitSource.Melee, dmg, new Vector2(a.Knockback.x * Facing, a.Knockback.y), a.Hitstun, a.Flags, type, point, Def.Look.Aura);
-            h.Hitstop = a.Hitstop;
+            h.Hitstop = a.Hitstop * (a.Chargeable ? Mathf.Lerp(1f, 1.5f, ChargeTime / MaxCharge) : 1f);
             h.CeGain = a.CeGain;
+            if (chargeFull) { h.Flags |= HitFlags.GuardBreak; h.Knockback *= 1.3f; }
             if (Has(StatusType.Executioner)) { h.Damage *= 1f + StatusMag(StatusType.Executioner); h.Flags |= HitFlags.PierceInfinity | HitFlags.Unblockable; h.Type = DamageType.Slash; }
             if (Has(StatusType.Amplification)) h.Flags |= HitFlags.PierceInfinity;
             if (M.Domains.OwnerEffect(this) == SureHit.SoulStrike) h.Flags |= HitFlags.PierceInfinity | HitFlags.Soul;
@@ -489,8 +538,10 @@ namespace ProjectSorcery
             bool blackFlash = false;
             if (heavy && !IsRestricted && !Has(StatusType.Sealed))
             {
-                float chance = 0.02f + (Def.Has(Passive.BlackFlashAffinity) ? 0.05f : 0f) + (Has(StatusType.Zone) ? 0.06f : 0f);
-                if (bfPrimed || ForcedBlackFlashes > 0 || M.Rng.Chance(chance)) blackFlash = true;
+                // black flash is rare: the rhythm must be hit, and the spark needs time to come back
+                float chance = (Def.Has(Passive.BlackFlashAffinity) ? 0.03f : 0f) + (Has(StatusType.Zone) ? 0.04f : 0f);
+                bool ready = M.Time >= bfReadyAt;
+                if (ForcedBlackFlashes > 0 || (ready && (bfPrimed || M.Rng.Chance(chance)))) blackFlash = true;
                 if (blackFlash && ForcedBlackFlashes > 0) ForcedBlackFlashes--;
             }
             bfPrimed = false;
@@ -509,15 +560,30 @@ namespace ProjectSorcery
             {
                 attackConnected = true;
                 if ((h.Flags & HitFlags.NoHitstop) == 0) Hitstop = Mathf.Max(Hitstop, h.Hitstop * (res == HitResult.Blocked ? 0.7f : 1f));
+                Vel.x *= 0.25f;   // the blow lands: momentum dies on contact instead of sliding through the target
+                // corner pushback: when the defender is pinned on a wall, the attacker is the one pushed out
+                float wallX = Facing > 0 ? M.Arena.Right : M.Arena.Left;
+                if (Mathf.Abs(wallX - e.Pos.x) < 1.1f && Grounded)
+                    Vel.x = -Facing * Mathf.Max(4.5f, Mathf.Abs(h.Knockback.x) * 0.9f);
+            }
+            if (res == HitResult.Hit && !blackFlash)
+            {
+                // weight: heavier blows punch the camera toward the impact
+                float impact = (a.Clip != null ? a.Clip.Impact : 1f) * (heavy ? 1f : 0.45f) * (a.Chargeable ? ChargeMul : 1f);
+                if (heavy || impact > 0.5f) { CameraRig.Shake(0.12f + 0.14f * impact); CameraRig.PunchAt(0.1f + 0.1f * impact, point); }
+                if (chargeFull) M.SlowMo(0.35f, 0.18f);
             }
             if (res == HitResult.Hit)
             {
                 if ((a.Flags & HitFlags.Light) != 0)
                 {
                     // open the black flash window: the heavy must land in this rhythm after the light connects
-                    float window = 0.1f + Def.BlackFlashBonus + (Def.Has(Passive.BlackFlashAffinity) ? 0.05f : 0f) + (Has(StatusType.Zone) ? 0.04f : 0f);
-                    bfOpen = M.Time + h.Hitstop + 0.03f;
-                    bfClose = bfOpen + window;
+                    if (M.Time >= bfReadyAt)
+                    {
+                        float window = 0.08f + Def.BlackFlashBonus + (Def.Has(Passive.BlackFlashAffinity) ? 0.04f : 0f) + (Has(StatusType.Zone) ? 0.03f : 0f);
+                        bfOpen = M.Time + h.Hitstop + 0.03f;
+                        bfClose = bfOpen + window;
+                    }
                 }
                 if (blackFlash) OnBlackFlash(e, point);
             }
@@ -530,7 +596,8 @@ namespace ProjectSorcery
             BfStreak++;
             bfStreakTimer = 7f;
             StatBlackFlashes++;
-            AddStatus(StatusType.Zone, 12f, 1f, this);
+            bfReadyAt = M.Time + (Has(StatusType.Zone) ? 1.5f : 5f);
+            AddStatus(StatusType.Zone, 6f, 1f, this);
             GainCe(MaxCe * 0.3f);
             M.SlowMo(0.12f, 0.4f);
             e.Hitstop = Mathf.Max(e.Hitstop, 0.24f);
@@ -602,6 +669,13 @@ namespace ProjectSorcery
             {
                 Vel.x *= 0.35f;
                 SetState(Grounded ? FState.Idle : FState.Air);
+            }
+            else if ((buffered == Act.Light || buffered == Act.Heavy) && Grounded && StateTime > 0.04f && Vel.x * Facing > 0f)
+            {
+                // attack out of a forward dash: the dash strike carries all that momentum
+                Consume();
+                ComboStep = 0;
+                StartAttack(Set.Dash);
             }
             else if (buffered == Act.Light || buffered == Act.Heavy || buffered >= Act.S1)
             {
@@ -975,7 +1049,9 @@ namespace ProjectSorcery
                 if (State == FState.Air || State == FState.Dash) { SetState(FState.Idle); Land(); }
                 else if (State == FState.Hitstun)
                 {
-                    bool hard = Juggle >= 3 || Hitstun > 0.3f;
+                    // only real launches (or very long juggles) end on the floor; light pops just stagger
+                    bool hard = (Launched && (Juggle >= 2 || Hitstun > 0.15f)) || Juggle >= 6;
+                    Launched = false;
                     if (hard && !Has(StatusType.Armor) && !IsBoss)
                     {
                         SetState(FState.Knockdown);

@@ -238,7 +238,7 @@ namespace ProjectSorcery
             return "<b><color=#ffffff>CONTROLS</color></b>\n\n<b>Keyboard P1</b>\n" + InputHub.P1.Description.Replace("  |  ", "\n") +
                    "\n\n<b>Keyboard P2</b>\n" + InputHub.P2.Description.Replace("  |  ", "\n") +
                    "\n\n<b>Gamepad</b>\n" + InputHub.GamepadDescription.Replace("  |  ", "\n") +
-                   "\n\n<b>Everyone</b>\nDown + Light = sweep, Down + Heavy = launcher\nHold Block + Down = Reverse Technique / Simple Domain\nBlock + Dash while juggled = Burst\nHold a skill button = chant (if chantable)\nLight hit, then Heavy in rhythm = BLACK FLASH";
+                   "\n\n<b>Everyone</b>\nDown + Light = sweep, Down + Heavy = launcher\nHold Heavy = charge it (full charge bursts out as an aura blast)\nAttack out of a forward dash = dash strike\nHold Block + Down = Reverse Technique / Simple Domain\nBlock + Dash while juggled = Burst\nHold a skill button = chant (if chantable)\nLight hit, then Heavy in rhythm = BLACK FLASH (rare!)";
         }
 
         static string TeamName(int t) => t == 0 ? "Azure" : t == 1 ? "Crimson" : "Jade";

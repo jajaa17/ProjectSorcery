@@ -27,12 +27,13 @@ namespace ProjectSorcery
             // Boundless (Infinity): everything slows to a stop before touching
             bool atkPierces = atk != null && (atk.Has(StatusType.Amplification) || atk.Has(StatusType.Executioner) ||
                                               (atk.Def.Has(Passive.Adaptation) && atk.InfinityHitsTaken >= 4));
-            // boundless space can't be maintained while attacking, casting or dashing: those are the openings
-            bool selfBusy = State == FState.Attack || State == FState.Cast || State == FState.Dash || InStrike || State == FState.Hitstun;
+            // Boundless is always on. The ways through: sure-hit domains, techniques that pierce it, soul strikes,
+            // adaptation, sealing/burnout, or draining the cursed energy that sustains it below 20%.
+            bool focusLost = Has(StatusType.Burnout) || Has(StatusType.Sealed) || (Casting is DomainAb);
             if (Def.Has(Passive.Infinity) && Ce > MaxCe * 0.2f && !sure && !h.Has(HitFlags.PierceInfinity) && !h.Has(HitFlags.Soul)
-                && !atkPierces && !selfBusy)
+                && !atkPierces && !focusLost)
             {
-                Ce = Mathf.Max(0f, Ce - (h.Has(HitFlags.Heavy) ? 14f : 8f));
+                Ce = Mathf.Max(0f, Ce - (h.Has(HitFlags.Heavy) ? 15f : 8f));
                 if (atk != null)
                 {
                     atk.InfinityHitsTaken++;
@@ -41,7 +42,7 @@ namespace ProjectSorcery
                 }
                 VFX.InfinityRipple(h.Point, Def.Look.Aura);
                 Audio.Play(Sfx.Infinity, h.Point, 0.5f);
-                if (h.Damage > 0f) ApplyDamage(h.Damage * 0.2f, atk, h.Type);
+                if (atk != null && h.Source == HitSource.Melee) { atk.Vel.x = -atk.Facing * 3.5f; atk.Hitstop = Mathf.Max(atk.Hitstop, 0.05f); }
                 if (Ce <= MaxCe * 0.2f) VFX.WorldText(HeadPos + Vector2.up * 0.6f, "BOUNDLESS DOWN", Def.Look.Aura, 0.9f);
                 return HitResult.Nullified;
             }
@@ -56,6 +57,7 @@ namespace ProjectSorcery
                 // cursed techniques still burn through a guard a little (chip damage)
                 ApplyDamage(h.Damage * (h.Has(HitFlags.Technique) ? 0.22f : 0.1f), atk, h.Type);
                 Vel.x = Mathf.Sign(h.Knockback.x == 0f ? -Facing : h.Knockback.x) * Mathf.Min(6f, Mathf.Abs(h.Knockback.x) * 0.5f + 1.5f);
+                GuardImpulse = Mathf.Clamp(h.Damage / 45f, 0.3f, 1.5f);
                 Hitstop = Mathf.Max(Hitstop, h.Hitstop * 0.7f);
                 VFX.BlockSpark(h.Point, Facing, Def.Look.Aura);
                 Audio.Play(Sfx.Block, h.Point, 0.7f);
@@ -189,9 +191,19 @@ namespace ProjectSorcery
             Vector2 kb = h.Knockback / weight;
             if (inCombo && Juggle > 4) kb.y *= Mathf.Max(0.5f, 1f - 0.05f * (Juggle - 4));
             Vel = kb;
+            Launched = Mathf.Abs(kb.y) > 5f || (Launched && inCombo && !Grounded);
             if (kb.y > 0.5f) Grounded = false;
-            float stun = h.Hitstun * (inCombo ? Mathf.Max(0.55f, 1f - 0.035f * Juggle) : 1f);
-            Hitstun = Mathf.Max(stun, State == FState.Hitstun ? Hitstun * 0.5f : 0f);
+            // hitstun decays through a combo so nothing loops forever; past a hard cap the victim breaks free
+            float stun = h.Hitstun * (inCombo ? Mathf.Max(0.35f, 1f - 0.065f * Juggle) : 1f);
+            Hitstun = Mathf.Max(stun, State == FState.Hitstun ? Hitstun * 0.4f : 0f);
+            if (inCombo && Juggle >= 11 && !IsBoss && !sure)
+            {
+                Invuln = Mathf.Max(Invuln, 0.7f);
+                Vel = new Vector2(Mathf.Sign(kb.x == 0f ? -Facing : kb.x) * 7f, 7f);
+                Grounded = false;
+                Juggle = 99; Launched = true;
+                VFX.WorldText(HeadPos + Vector2.up * 0.7f, "BREAK", Color.white, 0.8f);
+            }
             if ((h.Flags & HitFlags.NoHitstop) == 0) Hitstop = Mathf.Max(Hitstop, h.Hitstop);
             if (h.Knockback.x != 0f) Facing = h.Knockback.x > 0 ? -1 : 1;
             SetState(FState.Hitstun);
