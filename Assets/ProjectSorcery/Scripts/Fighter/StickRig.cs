@@ -159,7 +159,7 @@ namespace ProjectSorcery
 
             SetPts(legs, 5, S.FootB, S.KneeB, S.Hip, S.KneeF, S.FootF); Col(legs, body);
             SetPts(torso, 3, S.Hip, S.SpineMid, S.Neck); Col(torso, body);
-            SetPts(arms, 5, S.HandB, S.ElbowB, S.Neck, S.ElbowF, S.HandF); Col(arms, body);
+            SetPts(arms, 7, S.HandB, S.ElbowB, S.ShoulderB, S.Neck, S.ShoulderF, S.ElbowF, S.HandF); Col(arms, body);
             Circle(head, S.HeadC, 0.25f * f.Size, 20); Col(head, body);
 
             legsGlow.enabled = torsoGlow.enabled = armsGlow.enabled = headGlow.enabled = glowA > 0.01f && Settings.VfxQuality > 0;
@@ -167,7 +167,7 @@ namespace ProjectSorcery
             {
                 SetPts(legsGlow, 5, S.FootB, S.KneeB, S.Hip, S.KneeF, S.FootF); Col(legsGlow, g);
                 SetPts(torsoGlow, 3, S.Hip, S.SpineMid, S.Neck); Col(torsoGlow, g);
-                SetPts(armsGlow, 5, S.HandB, S.ElbowB, S.Neck, S.ElbowF, S.HandF); Col(armsGlow, g);
+                SetPts(armsGlow, 7, S.HandB, S.ElbowB, S.ShoulderB, S.Neck, S.ShoulderF, S.ElbowF, S.HandF); Col(armsGlow, g);
                 Circle(headGlow, S.HeadC, 0.25f * f.Size, 20); Col(headGlow, g);
             }
 

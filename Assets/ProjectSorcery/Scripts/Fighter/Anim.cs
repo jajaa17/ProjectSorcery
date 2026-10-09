@@ -63,7 +63,7 @@ namespace ProjectSorcery
             return new Clip
             {
                 Name = name, Smear = smear,
-                T = new[] { 0f, 0.8f, 1f, 1.2f, 1.85f, 2.55f, 3f },
+                T = new[] { 0f, 0.86f, 1f, 1.2f, 1.85f, 2.55f, 3f },
                 K = new[] { a, deep, c, over, hold, f, f },
                 E = new[] { Ease.InOut, Ease.In, Ease.Snap, Ease.Out, Ease.InOut, Ease.Out, Ease.Out },
             };
@@ -79,7 +79,7 @@ namespace ProjectSorcery
             return new Clip
             {
                 Name = name, Smear = smear,
-                T = new[] { 0f, 0.78f, 0.93f, 1f, 1.2f, 1.85f, 2.55f, 3f },
+                T = new[] { 0f, 0.84f, 0.95f, 1f, 1.2f, 1.85f, 2.55f, 3f },
                 K = new[] { a, deep, m, c, over, hold, f, f },
                 E = new[] { Ease.InOut, Ease.In, Ease.In, Ease.Snap, Ease.Out, Ease.InOut, Ease.Out, Ease.Out },
             };

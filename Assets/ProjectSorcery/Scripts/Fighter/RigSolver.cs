@@ -58,11 +58,11 @@ namespace ProjectSorcery
         }
 
         float runPhase, idleTime, airTime, flip, tumble, prevPhase = -1f, gripBlend;
-        bool wasGrounded = true, hurtHeavy;
+        bool wasGrounded = true, hurtHeavy, wasHitstop;
         int prevAirJumps = 1, lastFacing, srcId = int.MinValue, prevClip = -1;
 
         // ---------------- outputs
-        public Vector2 SpineMid;
+        public Vector2 SpineMid, ShoulderF, ShoulderB;
         public Vector2 RenderPos, Hip, Neck, HeadC, HandF, HandB, ElbowF, ElbowB, KneeF, KneeB, FootF, FootB, WeaponBase, WeaponTip;
         public float FaceSign = 1f;            // -1 while turned around mid-spin
         public float BodyWidth = 1f;           // |cos(turn)|, how "side-on" the figure currently reads
@@ -220,7 +220,9 @@ namespace ProjectSorcery
             {
                 const float ws = 24f, zs = 0.3f, wb = 20f, zb = 0.35f;
                 squashV += (-ws * ws * squash - 2f * zs * ws * squashV) * dt; squash += squashV * dt;
-                bendV += (-wb * wb * bend - 2f * zb * wb * bendV) * dt; bend += bendV * dt;
+                // the spine also lags the torso: whip the chest forward and the back curves behind it
+                float bendTarget = Mathf.Clamp(-v[0] * 0.0012f, -0.22f, 0.22f);
+                bendV += (-wb * wb * (bend - bendTarget) - 2f * zb * wb * bendV) * dt; bend += bendV * dt;
             }
             if (f.GuardImpulse > 0f)
             {
@@ -228,6 +230,21 @@ namespace ProjectSorcery
                 v[13] += 0.7f * f.GuardImpulse;
                 f.GuardImpulse = 0f;
             }
+
+            // IMPACT FRAME: the moment hit-stop starts on an attacker, snap to the strike pose so the frozen
+            // frame is the full extension (not a half-swung blur), then hold it for the whole freeze
+            bool inHitstop = f.Hitstop > 0f;
+            if (inHitstop && !wasHitstop && (f.State == FState.Attack || f.InStrike || f.State == FState.Cast))
+            {
+                var over = t;
+                for (int i = 0; i < CH; i++)
+                {
+                    if (i == 3 || i == 6) continue;
+                    x[i] += (over[i] - x[i]) * 0.9f;
+                    v[i] *= 0.25f;
+                }
+            }
+            wasHitstop = inHitstop;
 
             Simulate(t, dt, omega, zeta);
             Solve();
@@ -422,9 +439,22 @@ namespace ProjectSorcery
             Contact = prevPhase < 1f && ph >= 1f;
             prevPhase = ph;
             var k = c.Sample(ph);
+            // KINEMATIC CHAIN: power travels from the ground up. Around the strike the legs and hips run
+            // slightly ahead of the clip, the torso a little less, the arms on time, and the head and the
+            // weapon (wrist) lag behind, so the body uncoils like a whip instead of moving as one block.
+            float chain = Mathf.Clamp01((ph - 0.45f) / 0.25f) * Mathf.Clamp01((2.5f - ph) / 0.3f);
+            if (chain > 0f)
+            {
+                var lead = c.Sample(ph + 0.12f * chain);
+                var mid = c.Sample(ph + 0.06f * chain);
+                var lag = c.Sample(Mathf.Max(0f, ph - 0.07f * chain));
+                k.ThB = lead.ThB; k.ShB = lead.ShB; k.ThF = lead.ThF; k.ShF = lead.ShF; k.Drop = lead.Drop; k.Hx = lead.Hx;
+                k.Lean = mid.Lean; k.Rot = mid.Rot; k.Tn = mid.Tn;
+                k.Head = lag.Head; k.Wr = lag.Wr;
+            }
             // the snap: very stiff into contact, a touch looser through the follow-through (overshoot = weight)
-            if (ph < 0.8f) { omega = Mathf.Max(omega * 1.5f, 36f) * c.Stiff; zeta = 0.7f; }
-            else if (ph < 2f) { omega = Mathf.Max(omega * 2.4f, 58f) * c.Stiff; zeta = 0.5f; Striking = ph > 0.86f; }
+            if (ph < 0.86f) { omega = Mathf.Max(omega * 1.5f, 36f) * c.Stiff; zeta = 0.7f; }
+            else if (ph < 2f) { omega = Mathf.Max(omega * 2.6f, 70f) * c.Stiff; zeta = 0.5f; Striking = ph > 0.88f; }
             else { omega = Mathf.Max(omega * 1.2f, 30f) * c.Stiff; zeta = 0.55f; Striking = ph < 2.3f; }
             omega *= Set.Tempo;
             if (Persona.Pocket && c.TwoHand != 1 && c.Smear != Limb.HandB && c.Smear != Limb.Hands && !ReadsBackArm(c)) Pocket(ref k);
@@ -506,8 +536,13 @@ namespace ProjectSorcery
             }
 
             // arms: two-bone IK toward the keyed hand positions (straight-line punches)
-            Arm(Neck, new Vector2(fc * x[4], x[5]) * S, x[6] * fc, S, out ElbowF, out HandF);
-            Arm(Neck, new Vector2(fc * x[1], x[2]) * S, x[3] * fc, S, out ElbowB, out HandB);
+            // shoulder twist: when the rear hand drives forward the rear shoulder rolls forward with it
+            // (and the front one back), so the torso visibly rotates into a cross / two-handed swing
+            float twist = Mathf.Clamp((x[1] - x[4]) * 1.3f, -1f, 1f);
+            ShoulderB = Neck + fwd * (0.1f * S * twist) - up * (0.02f * S * Mathf.Abs(twist));
+            ShoulderF = Neck - fwd * (0.07f * S * twist);
+            Arm(ShoulderF, new Vector2(fc * x[4], x[5]) * S, x[6] * fc, S, out ElbowF, out HandF);
+            Arm(ShoulderB, new Vector2(fc * x[1], x[2]) * S, x[3] * fc, S, out ElbowB, out HandB);
 
             // weapon: blade angle = forearm angle + wrist
             Vector2 fore = HandF - ElbowF;
@@ -529,7 +564,7 @@ namespace ProjectSorcery
             if (gripBlend > 0.01f)
             {
                 Vector2 grip = HandF - wd * gripOffset * S;
-                Arm(Neck, grip - Neck, x[3] * fc, S, out var eb, out var hb);
+                Arm(ShoulderB, grip - ShoulderB, x[3] * fc, S, out var eb, out var hb);
                 ElbowB = Vector2.Lerp(ElbowB, eb, gripBlend); HandB = Vector2.Lerp(HandB, hb, gripBlend);
             }
 
@@ -539,6 +574,7 @@ namespace ProjectSorcery
             {
                 Vector2 p = Hip;
                 Neck = Rot(Neck, p, rot); HeadC = Rot(HeadC, p, rot); SpineMid = Rot(SpineMid, p, rot);
+                ShoulderF = Rot(ShoulderF, p, rot); ShoulderB = Rot(ShoulderB, p, rot);
                 ElbowB = Rot(ElbowB, p, rot); HandB = Rot(HandB, p, rot); ElbowF = Rot(ElbowF, p, rot); HandF = Rot(HandF, p, rot);
                 KneeB = Rot(KneeB, p, rot); FootB = Rot(FootB, p, rot); KneeF = Rot(KneeF, p, rot); FootF = Rot(FootF, p, rot);
                 WeaponBase = Rot(WeaponBase, p, rot); WeaponTip = Rot(WeaponTip, p, rot);
@@ -552,6 +588,7 @@ namespace ProjectSorcery
             {
                 float hx = Hip.x;
                 Neck.x = hx + (Neck.x - hx) * sx; HeadC.x = hx + (HeadC.x - hx) * sx; SpineMid.x = hx + (SpineMid.x - hx) * sx;
+                ShoulderF.x = hx + (ShoulderF.x - hx) * sx; ShoulderB.x = hx + (ShoulderB.x - hx) * sx;
                 ElbowB.x = hx + (ElbowB.x - hx) * sx; HandB.x = hx + (HandB.x - hx) * sx; ElbowF.x = hx + (ElbowF.x - hx) * sx; HandF.x = hx + (HandF.x - hx) * sx;
                 KneeB.x = hx + (KneeB.x - hx) * sx; FootB.x = hx + (FootB.x - hx) * sx; KneeF.x = hx + (KneeF.x - hx) * sx; FootF.x = hx + (FootF.x - hx) * sx;
                 WeaponBase.x = hx + (WeaponBase.x - hx) * sx; WeaponTip.x = hx + (WeaponTip.x - hx) * sx;

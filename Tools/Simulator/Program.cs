@@ -411,7 +411,7 @@ static class SimTests
                         sv.Step(dt, 1f);
                         if (k > 0) sb.Append(',');
                         sb.Append("{\"j\":[");
-                        Vector2[] js = { sv.FootB, sv.KneeB, sv.Hip, sv.KneeF, sv.FootF, sv.Neck, sv.HeadC, sv.HandB, sv.ElbowB, sv.ElbowF, sv.HandF, sv.WeaponBase, sv.WeaponTip, sv.SpineMid };
+                        Vector2[] js = { sv.FootB, sv.KneeB, sv.Hip, sv.KneeF, sv.FootF, sv.Neck, sv.HeadC, sv.HandB, sv.ElbowB, sv.ElbowF, sv.HandF, sv.WeaponBase, sv.WeaponTip, sv.SpineMid, sv.ShoulderB, sv.ShoulderF };
                         for (int q = 0; q < js.Length; q++) { if (q > 0) sb.Append(','); sb.Append($"[{js[q].x:F3},{js[q].y:F3}]"); }
                         sb.Append("],\"face\":").Append(fi.Facing * (int)sv.FaceSign);
                         sb.Append(",\"strike\":").Append(sv.Striking ? 1 : 0);
