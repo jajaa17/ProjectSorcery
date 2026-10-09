@@ -18,6 +18,7 @@ namespace ProjectSorcery.EditorTools
 
         static ProjectSetup()
         {
+            if (Application.isBatchMode) return; // command-line builds use BuildScript instead
             EditorApplication.delayCall += () =>
             {
                 if (!SessionState.GetBool(DoneKey, false))

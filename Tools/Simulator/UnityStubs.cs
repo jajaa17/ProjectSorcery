@@ -106,7 +106,7 @@ namespace UnityEngine
     public static class Time { public static float unscaledDeltaTime, unscaledTime, deltaTime, time; }
     public static class Application
     {
-        public static string version => ""; public static int targetFrameRate; public static bool runInBackground; public static void Quit() { }
+        public static string version => ""; public static int targetFrameRate; public static bool runInBackground; public static bool isBatchMode; public static void Quit() { }
     }
     public static class Debug { public static void Log(object o) { } public static void LogWarning(object o) { } public static void LogError(object o) { } }
     public static class Screen

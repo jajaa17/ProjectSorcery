@@ -49,7 +49,31 @@ There are no art, audio or prefab assets to import. The whole game (menus, fight
 
 > If Unity asks to restart because of the Input System backend, click **Yes**. The project uses "Both" (new Input System + legacy) so gamepads work everywhere.
 
+## Download and play
+
+Ready-to-play builds for Windows, macOS and Linux are on the [Releases](../../releases) page. Download the zip for your system, unzip it and run `ProjectSorcery.exe` (Windows), `ProjectSorcery.app` (macOS: right-click > Open the first time, since the app is unsigned) or `ProjectSorcery` (Linux).
+
 ## Building a release (e.g. for itch.io)
+
+**Automatically on GitHub (builds run on GitHub's servers)**
+
+The `Build game` workflow builds all three platforms in real Unity using [GameCI](https://game.ci). It needs a free Unity Personal license, added once as repository secrets:
+
+1. Install Unity Hub, sign in, and activate a Personal license (**Preferences > Licenses > Add > Get a free personal license**).
+2. Find the license file it created: `C:\ProgramData\Unity\Unity_lic.ulf` on Windows, `/Library/Application Support/Unity/Unity_lic.ulf` on macOS (the folders may be hidden).
+3. In the GitHub repo go to **Settings > Secrets and variables > Actions > New repository secret** and add:
+   - `UNITY_LICENSE`: the whole contents of `Unity_lic.ulf`
+   - `UNITY_EMAIL`: your Unity account email
+   - `UNITY_PASSWORD`: your Unity account password
+4. Either run **Actions > Build game > Run workflow** and download the zips from the run's *Artifacts*, or push a version tag to publish a GitHub Release:
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+Secrets are encrypted and never visible in logs, and forks don't get them.
+
+**By hand in the Unity editor**
 
 1. **File > Build Profiles** (or Build Settings), choose **Windows** (or macOS / Linux).
 2. Make sure `Main` is the only scene in the list (the setup step does this for you).
