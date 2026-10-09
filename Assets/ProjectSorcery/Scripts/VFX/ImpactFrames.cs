@@ -11,11 +11,11 @@ namespace ProjectSorcery
     {
         public enum FighterInk { Normal, White, Black }
 
-        struct Frame { public Color Bg; public FighterInk Ink; public float Dur; }
+        struct Frame { public Color Bg; public FighterInk Ink; public float Dur; }   // Dur = 60 fps frames (each lasts at least one rendered frame)
 
         static SpriteRenderer overlay;
         static Frame[] seq;
-        static int idx;
+        static int idx, shown;
         static float t;
         public static FighterInk Ink = FighterInk.Normal;
         public static bool Active => seq != null;
@@ -35,41 +35,41 @@ namespace ProjectSorcery
             if (overlay == null) return;
             if (!Settings.ImpactFlashes)
             {
-                seq = new[] { new Frame { Bg = kind == ImpactKind.BlackFlash ? Red.WithA(0.35f) : Black.WithA(0.3f), Ink = FighterInk.Normal, Dur = 0.09f } };
+                seq = new[] { new Frame { Bg = kind == ImpactKind.BlackFlash ? Red.WithA(0.35f) : Black.WithA(0.3f), Ink = FighterInk.Normal, Dur = 5f } };
             }
             else switch (kind)
             {
                 case ImpactKind.Heavy:
                     if (Active) return; // never interrupt a bigger sequence
-                    seq = new[] { new Frame { Bg = Black.WithA(0.92f), Ink = FighterInk.White, Dur = 0.035f } };
+                    seq = new[] { new Frame { Bg = Black.WithA(0.92f), Ink = FighterInk.White, Dur = 2f } };
                     break;
                 case ImpactKind.BlackFlash:
                     seq = new[]
                     {
-                        new Frame { Bg = Black, Ink = FighterInk.White, Dur = 0.05f },
-                        new Frame { Bg = Red, Ink = FighterInk.Black, Dur = 0.06f },
-                        new Frame { Bg = Black, Ink = FighterInk.White, Dur = 0.045f },
-                        new Frame { Bg = White, Ink = FighterInk.Black, Dur = 0.05f },
-                        new Frame { Bg = Red.WithA(0.55f), Ink = FighterInk.Black, Dur = 0.07f },
+                        new Frame { Bg = Black, Ink = FighterInk.White, Dur = 3f },
+                        new Frame { Bg = Red, Ink = FighterInk.Black, Dur = 4f },
+                        new Frame { Bg = Black, Ink = FighterInk.White, Dur = 3f },
+                        new Frame { Bg = White, Ink = FighterInk.Black, Dur = 3f },
+                        new Frame { Bg = Red.WithA(0.55f), Ink = FighterInk.Black, Dur = 4f },
                     };
                     break;
                 case ImpactKind.Domain:
                     seq = new[]
                     {
-                        new Frame { Bg = White, Ink = FighterInk.Black, Dur = 0.06f },
-                        new Frame { Bg = Black, Ink = FighterInk.White, Dur = 0.07f },
+                        new Frame { Bg = White, Ink = FighterInk.Black, Dur = 4f },
+                        new Frame { Bg = Black, Ink = FighterInk.White, Dur = 4f },
                     };
                     break;
                 case ImpactKind.Ko:
                     seq = new[]
                     {
-                        new Frame { Bg = Black, Ink = FighterInk.White, Dur = 0.08f },
-                        new Frame { Bg = Red, Ink = FighterInk.Black, Dur = 0.1f },
-                        new Frame { Bg = Black.WithA(0.6f), Ink = FighterInk.White, Dur = 0.06f },
+                        new Frame { Bg = Black, Ink = FighterInk.White, Dur = 5f },
+                        new Frame { Bg = Red, Ink = FighterInk.Black, Dur = 6f },
+                        new Frame { Bg = Black.WithA(0.6f), Ink = FighterInk.White, Dur = 4f },
                     };
                     break;
             }
-            idx = 0; t = 0f;
+            idx = 0; t = 0f; shown = 0;
             Apply();
         }
 
@@ -88,10 +88,13 @@ namespace ProjectSorcery
             if (overlay == null) return;
             if (seq != null)
             {
+                // a frame advances only once it has been on screen for its frame count (at 60 fps timing)
+                // AND been rendered at least that many times, so 2 frames really means 2 visible frames
                 t += Mathf.Min(Time.unscaledDeltaTime, 0.05f);
-                while (seq != null && t >= seq[idx].Dur)
+                shown++;
+                while (seq != null && t >= seq[idx].Dur / 60f && shown >= seq[idx].Dur)
                 {
-                    t -= seq[idx].Dur;
+                    t = 0f; shown = 0;
                     idx++;
                     if (idx >= seq.Length) seq = null;
                 }

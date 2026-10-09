@@ -162,7 +162,7 @@ namespace ProjectSorcery
             DomainFX.Show(def, f);
             M.Events.DomainExpanded(f, def);
             Audio.DomainOpen(def.Theme);
-            CameraRig.Shake(0.6f);
+            CameraRig.Moment(f.Center, 0.7f);
             if (cinematic) M.Freeze(1.5f);
 
             switch (def.Effect)
@@ -210,6 +210,7 @@ namespace ProjectSorcery
             DomainFX.ShowClash(ClashDefs, ClashFighters);
             Audio.Play(Sfx.ClashStart, Vector2.zero, 1f);
             CameraRig.Shake(0.8f);
+            CameraRig.Aberrate(1f);
         }
 
         void TickClash(float dt)

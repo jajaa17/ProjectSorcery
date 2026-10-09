@@ -19,6 +19,7 @@ namespace ProjectSorcery
         int count;
         readonly List<Vector3> verts = new List<Vector3>(Max * 2);
         readonly List<Color> cols = new List<Color>(Max * 2);
+        readonly List<Vector2> uvs = new List<Vector2>(Max * 2);
         readonly List<int> tris = new List<int>((Max - 1) * 6);
         public Color Core = Color.white, Edge = Color.white;
 
@@ -28,7 +29,7 @@ namespace ProjectSorcery
             go.transform.SetParent(parent, false);
             var mf = go.AddComponent<MeshFilter>();
             mr = go.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = Art.AddLine;
+            mr.sharedMaterial = Art.EnergySlash;
             mr.sortingOrder = Art.OrderFighterGlow;
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             mr.receiveShadows = false;
@@ -58,15 +59,18 @@ namespace ProjectSorcery
         {
             mesh.Clear();
             if (count < 2) return;
-            verts.Clear(); cols.Clear(); tris.Clear();
+            verts.Clear(); cols.Clear(); tris.Clear(); uvs.Clear();
             for (int i = 0; i < count; i++)
             {
                 float t = 1f - age[i] / Life;                    // 1 = newest
                 float fade = t * t;
                 verts.Add(new Vector3(a[i].x, a[i].y, 0f));
                 verts.Add(new Vector3(b[i].x, b[i].y, 0f));
-                cols.Add(Edge.WithA(0.05f * fade));
-                cols.Add(Color.Lerp(Edge, Core, t).WithA(0.85f * fade));
+                cols.Add(Edge.WithA(0.05f + 0.6f * fade));
+                cols.Add(Color.Lerp(Edge, Core, t).WithA(0.25f + 0.75f * fade));
+                // u runs back along the swing; v from the faint inner edge (0) to the white-hot blade line (0.5)
+                float u = age[i] / Life * 1.5f;
+                uvs.Add(new Vector2(u, 0f)); uvs.Add(new Vector2(u, 0.5f));
             }
             for (int i = 0; i < count - 1; i++)
             {
@@ -76,6 +80,7 @@ namespace ProjectSorcery
             }
             mesh.SetVertices(verts);
             mesh.SetColors(cols);
+            mesh.SetUVs(0, uvs);
             mesh.SetTriangles(tris, 0);
             mesh.RecalculateBounds();
         }

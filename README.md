@@ -32,7 +32,7 @@ Stick figures, ink-black impact frames, screen-shattering domain clashes. 71 pla
 
 ![Domain interiors](docs/images/domains.jpg)
 
-- Procedural VFX: cursed-energy auras, slashes, beams, shockwaves, impact frames, camera shake and zoom
+- Procedural VFX: layered cursed-energy beams and orbs (white-hot core, boiling noise aura, sparks collapsing inward while they charge), slash smears that scroll and dissolve at the tip, 1–2 frame ink impact frames, trauma-based directional camera shake, zoom-ins, red/cyan aberration splits on big moments, tinted stretching afterimages
 - Procedural audio: every punch, slash, chant and domain drone is synthesized at runtime, plus generated music
 - 7 hand-painted-by-code arenas (one is raid-only)
 - Clean, low-distraction HUD
@@ -161,7 +161,7 @@ Every fighter has a bio, kit description and passives in **Characters** on the m
 ```
 Assets/ProjectSorcery/
   Editor/            one-click project setup (scene, build + player settings)
-  Resources/         the only non-code asset: an additive glow shader
+  Resources/         the only non-code assets: an additive glow shader and a procedural noise energy shader
   Scripts/
     Core/            boot (GameRoot), deterministic Match simulation, settings, RNG, balance knobs
     Fighter/         fighter state machine, damage model, procedural stick rig and poses

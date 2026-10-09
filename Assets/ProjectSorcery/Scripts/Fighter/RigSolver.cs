@@ -27,7 +27,7 @@ namespace ProjectSorcery
         // taking a hit: chest and head whip first, arms and legs trail behind (asynchronous whiplash)
         static readonly float[] chHurt = { 2.0f, 0.42f, 0.42f, 1f, 0.42f, 0.42f, 1f, 0.6f, 0.6f, 0.6f, 0.6f, 1.2f, 2.6f, 1.1f, 1f, 1.5f, 1.25f };
         bool hurtMode;
-        float hurtT = 9f, squash, squashV, bend, bendV;
+        float hurtT = 9f, squash, squashV, bend, bendV, lastVy;
         int hurtKind;   // 0 = head/high, 1 = gut/heavy, 2 = airborne
 
         // impact -> whiplash -> reel (overshoot) -> heavy settle, keyed in seconds after the hit
@@ -169,7 +169,12 @@ namespace ProjectSorcery
             {
                 v[13] += 3.2f * landSquash;   // landing squash
                 v[0] += 70f;
+                // velocity-driven squash: the harder the fall, the more the body compresses before it springs back
+                squashV += Mathf.Clamp(-lastVy * 0.32f, 1.5f, 6f) * landSquash;
             }
+            // take-off stretch: the body pops long the instant it leaves the ground
+            if (wasGrounded && !f.Grounded && f.Vel.y > 4f) squashV -= Mathf.Clamp(f.Vel.y * 0.3f, 1f, 4.5f);
+            lastVy = f.Vel.y;
             wasGrounded = f.Grounded;
             if (!f.Grounded && f.AirJumps < prevAirJumps) flip = 0.42f;
             prevAirJumps = f.AirJumps;
@@ -219,7 +224,9 @@ namespace ProjectSorcery
             // jelly springs for the deformation (underdamped: a little wobble)
             {
                 const float ws = 24f, zs = 0.3f, wb = 20f, zb = 0.35f;
-                squashV += (-ws * ws * squash - 2f * zs * ws * squashV) * dt; squash += squashV * dt;
+                // fast vertical motion stretches the torso along the travel (rise and fall), like smeared animation frames
+                float stretchRest = !f.Grounded && hurtT > 0.3f ? -Mathf.Clamp((Mathf.Abs(f.Vel.y) - 4f) * 0.025f, 0f, 0.28f) : 0f;
+                squashV += (-ws * ws * (squash - stretchRest) - 2f * zs * ws * squashV) * dt; squash += squashV * dt;
                 // the spine also lags the torso: whip the chest forward and the back curves behind it
                 float bendTarget = Mathf.Clamp(-v[0] * 0.0012f, -0.22f, 0.22f);
                 bendV += (-wb * wb * (bend - bendTarget) - 2f * zb * wb * bendV) * dt; bend += bendV * dt;

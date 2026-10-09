@@ -466,6 +466,7 @@ namespace ProjectSorcery
                     {
                         chargeFull = true;
                         VFX.Ring(Center, Def.Look.Aura, 1.6f * Size, 0.25f, 0.08f);
+                        CameraRig.Aberrate(0.35f);
                         Audio.Play(Sfx.Charge, Center, 0.8f, 1.3f);
                     }
                     return;
@@ -605,8 +606,10 @@ namespace ProjectSorcery
             {
                 // weight: heavier blows punch the camera toward the impact
                 float impact = (a.Clip != null ? a.Clip.Impact : 1f) * (heavy ? 1f : 0.45f) * (a.Chargeable ? ChargeMul : 1f);
-                if (heavy || impact > 0.5f) { CameraRig.Shake(0.12f + 0.14f * impact); CameraRig.PunchAt(0.1f + 0.1f * impact, point); }
-                if (chargeFull) M.SlowMo(0.35f, 0.18f);
+                // light = micro-shake; heavy = trauma + a directional kick along the blow + zoom toward the impact
+                CameraRig.Hit(new Vector2(Facing, h.Knockback.y * 0.08f), heavy ? impact : impact * 0.8f);
+                if (heavy || impact > 0.5f) CameraRig.PunchAt(0.1f + 0.1f * impact, point);
+                if (chargeFull) { M.SlowMo(0.35f, 0.18f); CameraRig.Moment(point, 0.6f); }
             }
             if (res == HitResult.Hit)
             {

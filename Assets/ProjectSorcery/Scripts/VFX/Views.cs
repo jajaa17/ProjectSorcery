@@ -7,7 +7,7 @@ namespace ProjectSorcery
     {
         public GameObject Go;
         public SpriteRenderer Glow, Core;
-        public LineRenderer Shape;
+        public LineRenderer Shape, Aura;
         public TrailRenderer Trail;
         public float T;
     }
@@ -15,8 +15,9 @@ namespace ProjectSorcery
     public sealed class BeamView
     {
         public GameObject Go;
-        public LineRenderer Outer, Inner, Core;
-        public SpriteRenderer Flare;
+        public LineRenderer Halo, Outer, Inner, Core;
+        public SpriteRenderer Flare, EndFlare;
+        public float ChargeFx;
     }
 
     public sealed class MinionView
@@ -142,10 +143,16 @@ namespace ProjectSorcery
             v.Core = Art.NewSprite(go.transform, "Core", Art.Soft, Art.AddSoft, Art.OrderProjectile + 1);
             v.Shape = Art.NewLine(go.transform, "Shape", Art.AddLine, Art.OrderProjectile + 2, 0.08f, 2);
             v.Shape.useWorldSpace = true;
+            // flowing aura ring around energy orbs (procedural noise shader)
+            v.Aura = Art.NewLine(go.transform, "Aura", Art.EnergyBeam, Art.OrderProjectile, 0.2f, 2);
+            v.Aura.useWorldSpace = true;
+            v.Aura.textureMode = LineTextureMode.Stretch;
+            v.Aura.enabled = false;
             var tgo = new GameObject("Trail");
             tgo.transform.SetParent(go.transform, false);
             v.Trail = tgo.AddComponent<TrailRenderer>();
-            v.Trail.sharedMaterial = Art.AddLine;
+            v.Trail.sharedMaterial = Art.EnergyBeam;
+            v.Trail.textureMode = LineTextureMode.Stretch;
             v.Trail.widthCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
             v.Trail.minVertexDistance = 0.05f;
             v.Trail.sortingOrder = Art.OrderProjectile - 1;
@@ -158,10 +165,14 @@ namespace ProjectSorcery
             var go = new GameObject("Beam");
             go.transform.SetParent(root, false);
             var v = new BeamView { Go = go };
-            v.Outer = Art.NewLine(go.transform, "Outer", Art.AddLine, Art.OrderProjectile, 1f, 12);
+            // layered beam: soft bloom halo -> boiling noise aura -> solid colour body -> white-hot core
+            v.Halo = Art.NewLine(go.transform, "Halo", Art.AddLine, Art.OrderProjectile - 1, 1f, 2);
+            v.Outer = Art.NewLine(go.transform, "Outer", Art.EnergyBeam, Art.OrderProjectile, 1f, 12);
+            v.Outer.textureMode = LineTextureMode.Tile;
             v.Inner = Art.NewLine(go.transform, "Inner", Art.AddLine, Art.OrderProjectile + 1, 0.5f, 12);
             v.Core = Art.NewLine(go.transform, "Core", Art.AddLine, Art.OrderProjectile + 2, 0.2f, 2);
             v.Flare = Art.NewSprite(go.transform, "Flare", Art.Soft, Art.AddSoft, Art.OrderProjectile + 3);
+            v.EndFlare = Art.NewSprite(go.transform, "EndFlare", Art.Soft, Art.AddSoft, Art.OrderProjectile + 3);
             return v;
         }
 
@@ -215,6 +226,16 @@ namespace ProjectSorcery
             sh.enabled = true;
             sh.widthMultiplier = Mathf.Max(0.05f, s * 0.22f);
             Color c = d.Color;
+            bool orb = d.Vis == ProjVis.Orb || d.Vis == ProjVis.Sphere || d.Vis == ProjVis.Blood || d.Vis == ProjVis.Water;
+            v.Aura.enabled = orb && s >= 0.45f && Settings.VfxQuality > 0;
+            if (v.Aura.enabled)
+            {
+                Ring(v.Aura, pos, s * 1.15f * pulse, 20, -v.T * 4f);
+                v.Aura.widthMultiplier = s * 0.55f;
+                var ac = c.WithA(0.9f);
+                v.Aura.startColor = ac; v.Aura.endColor = ac;
+                if (s >= 0.9f && Random.value < 0.5f) VFX.Implode(pos, s * 2.2f, c, 2, 0.25f);   // ultimate orbs keep drinking in energy
+            }
             switch (d.Vis)
             {
                 case ProjVis.Orb: case ProjVis.Blood: case ProjVis.Water: case ProjVis.Skull:
@@ -357,7 +378,10 @@ namespace ProjectSorcery
             if (!b.Firing)
             {
                 float k = Mathf.Clamp01(b.Age / Mathf.Max(0.01f, d.Charge));
-                v.Outer.enabled = false; v.Inner.enabled = false;
+                v.Outer.enabled = false; v.Inner.enabled = false; v.Halo.enabled = false; v.EndFlare.enabled = false;
+                // charge-up: energy spirals in and collapses into the muzzle before it fires
+                v.ChargeFx -= Time.unscaledDeltaTime;
+                if (v.ChargeFx <= 0f) { v.ChargeFx = 0.03f; VFX.Implode(a, 1.2f + w * 1.5f, d.Color, 3, Mathf.Max(0.12f, d.Charge * 0.6f)); }
                 v.Core.enabled = true;
                 v.Core.SetPosition(0, a); v.Core.SetPosition(1, e);
                 v.Core.widthMultiplier = 0.03f + 0.05f * k;
@@ -369,8 +393,12 @@ namespace ProjectSorcery
                 return;
             }
             v.Outer.enabled = v.Inner.enabled = v.Core.enabled = true;
+            v.Halo.enabled = Settings.VfxQuality > 0; v.EndFlare.enabled = true;
             float life = Mathf.Clamp01((b.Age - d.Charge) / Mathf.Max(0.01f, d.Duration));
             float fade = life > 0.8f ? (1f - life) / 0.2f : 1f;
+            float burst = life < 0.12f ? 1f + (0.12f - life) / 0.12f * 0.8f : 1f;   // the first instant fires wide
+            CameraRig.Rumble(Mathf.Clamp01(w * 0.18f) * fade);
+            if (life < 0.06f) { CameraRig.Aberrate(Mathf.Clamp01(0.3f + w * 0.35f)); CameraRig.Kick(dir, 0.08f + w * 0.05f); }   // firing kicks the lens
             float t = Time.unscaledTime;
             for (int i = 0; i < n; i++)
             {
@@ -381,13 +409,19 @@ namespace ProjectSorcery
                 v.Inner.SetPosition(i, p);
             }
             float pulse = 1f + Mathf.Sin(t * 50f) * 0.1f;
-            v.Outer.widthMultiplier = w * 1.8f * pulse * fade;
-            v.Inner.widthMultiplier = w * 0.9f * fade;
+            v.Outer.widthMultiplier = w * 2f * pulse * fade * burst;
+            v.Inner.widthMultiplier = w * 0.9f * fade * burst;
             v.Core.SetPosition(0, a); v.Core.SetPosition(1, e);
-            v.Core.widthMultiplier = w * 0.3f * fade;
-            v.Outer.startColor = v.Outer.endColor = d.Color.WithA(0.35f);
+            v.Core.widthMultiplier = w * 0.32f * fade * burst;
+            v.Halo.SetPosition(0, a); v.Halo.SetPosition(1, e);
+            v.Halo.widthMultiplier = w * 4.2f * pulse * fade * burst;
+            v.Halo.startColor = v.Halo.endColor = d.Color.WithA(0.12f);
+            v.Outer.startColor = v.Outer.endColor = d.Color.WithA(fade);    // vertex alpha drives the noise dissolve as it dies
             v.Inner.startColor = v.Inner.endColor = d.Color.WithA(0.85f);
-            v.Core.startColor = v.Core.endColor = d.Core;
+            v.Core.startColor = v.Core.endColor = Color.Lerp(d.Core, Color.white, 0.6f);
+            v.EndFlare.transform.position = e;
+            v.EndFlare.transform.localScale = Vector3.one * w * 3f * pulse * fade;
+            v.EndFlare.color = Color.Lerp(d.Color, Color.white, 0.4f);
             v.Flare.transform.position = a;
             v.Flare.transform.localScale = Vector3.one * w * 3.5f * pulse;
             v.Flare.color = d.Color;

@@ -9,6 +9,8 @@ namespace ProjectSorcery
         public static Material AddLine;   // additive, white texture (glow lines, beams)
         public static Material AddSoft;   // additive, soft radial texture (glow particles)
         public static Material AlphaSoft; // alpha-blended soft (smoke, ink)
+        public static Material EnergyBeam;  // procedural scrolling-noise energy (beam auras, projectile trails, aura rings)
+        public static Material EnergySlash; // same shader tuned for slash smears (slower flow, hotter core)
         public static Texture2D WhiteTex, SoftTex, RingTex, ShardTex;
         public static Sprite White, Soft, Ring, Shard;
         public static Font Font;
@@ -59,6 +61,15 @@ namespace ProjectSorcery
             AlphaSoft = new Material(spriteShader) { name = "PS_AlphaSoft", mainTexture = SoftTex };
             AddLine = new Material(addShader) { name = "PS_AddLine", mainTexture = WhiteTex };
             AddSoft = new Material(addShader) { name = "PS_AddSoft", mainTexture = SoftTex };
+            var energy = Shader.Find("ProjectSorcery/Energy");
+            if (energy != null)
+            {
+                EnergyBeam = new Material(energy) { name = "PS_EnergyBeam", mainTexture = WhiteTex };
+                EnergyBeam.SetFloat("_Scroll", 7f); EnergyBeam.SetFloat("_NoiseScale", 1.6f); EnergyBeam.SetFloat("_Hot", 0.6f);
+                EnergySlash = new Material(energy) { name = "PS_EnergySlash", mainTexture = WhiteTex };
+                EnergySlash.SetFloat("_Scroll", 2.5f); EnergySlash.SetFloat("_NoiseScale", 3f); EnergySlash.SetFloat("_Hot", 0.9f);
+            }
+            else { EnergyBeam = AddLine; EnergySlash = AddLine; }
 
             Font = LoadFont();
         }

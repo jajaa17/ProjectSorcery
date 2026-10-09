@@ -8,7 +8,8 @@ namespace ProjectSorcery
         public static CameraRig I;
         public Camera Cam;
 
-        float shake, punch;
+        float trauma, punch, ca;
+        Vector2 kick, kickVel, kickDir;
         Vector2 punchAt; bool punchAtSet;
         Fighter focus; float focusTimer;
         Vector2 pos; float size = 6.5f;
@@ -37,7 +38,35 @@ namespace ProjectSorcery
             return rig;
         }
 
-        public static void Shake(float amount) { if (I != null) I.shake = Mathf.Max(I.shake, amount * Settings.Shake); }
+        /// <summary>Adds trauma (0..1). The shake is trauma squared, so small hits stay subtle and big ones explode.</summary>
+        public static void Shake(float amount) { if (I != null) I.trauma = Mathf.Clamp01(Mathf.Max(I.trauma, amount * Settings.Shake) + amount * 0.25f * Settings.Shake); }
+
+        /// <summary>Holds trauma at a floor (sustained rumble while a beam fires or a domain manifests).</summary>
+        public static void Rumble(float amount) { if (I != null) I.trauma = Mathf.Max(I.trauma, amount * Settings.Shake); }
+
+        /// <summary>Directional kick: the frame jolts along the blow's direction and springs back.</summary>
+        public static void Kick(Vector2 dir, float amount) { if (I != null && dir.sqrMagnitude > 1e-4f) { I.kickVel += dir.normalized * amount * 9f * Settings.Shake; I.kickDir = dir.normalized; } }
+
+        /// <summary>Shake profile for a landed hit: light = micro-shake, heavy = trauma + kick along the hit.</summary>
+        public static void Hit(Vector2 dir, float weight)
+        {
+            if (weight < 0.6f) { Shake(0.08f + 0.06f * weight); Kick(dir, 0.05f); return; }
+            Shake(0.12f + 0.16f * weight);
+            Kick(dir, 0.1f + 0.1f * weight);
+        }
+
+        /// <summary>Chromatic-aberration pulse (fighters split into red/cyan ghosts for a moment).</summary>
+        public static void Aberrate(float amount) { if (I != null) I.ca = Mathf.Max(I.ca, amount * Mathf.Lerp(0.4f, 1f, Settings.Shake)); }
+        public static float Aberration => I != null ? I.ca : 0f;
+        /// <summary>Direction the colour channels split along: the last hit's kick, horizontal by default.</summary>
+        public static Vector2 AberrationDir => I != null && I.kickDir.sqrMagnitude > 1e-4f ? I.kickDir : Vector2.right;
+        /// <summary>The full anime "big moment" stamp: aberration split, zoom toward the point and a hard shake.</summary>
+        public static void Moment(Vector2 at, float amount)
+        {
+            Aberrate(amount);
+            PunchAt(0.2f + 0.35f * amount, at);
+            Shake(0.3f + 0.5f * amount);
+        }
         public static void Punch(float amount) { if (I != null) I.punch = Mathf.Max(I.punch, amount * Mathf.Lerp(0.5f, 1f, Settings.Shake)); }
         /// <summary>Zoom-punch that also nudges the frame toward the impact point.</summary>
         public static void PunchAt(float amount, Vector2 at)
@@ -108,11 +137,15 @@ namespace ProjectSorcery
 
         void Apply(float dt)
         {
-            shake = Mathf.MoveTowards(shake, 0f, dt * 2.2f);
+            trauma = Mathf.MoveTowards(trauma, 0f, dt * 1.6f);
             punch = Mathf.MoveTowards(punch, 0f, dt * 2.8f);
+            ca = Mathf.MoveTowards(ca, 0f, dt * 3f);
+            // kick spring: snaps out along the hit, springs back with a little overshoot
+            kickVel += (-kick * 220f - kickVel * 16f) * dt;
+            kick += kickVel * dt;
             float t = Time.unscaledTime * 38f;
-            float s = shake * shake * 0.6f;
-            Vector2 off = new Vector2((Mathf.PerlinNoise(seedX, t) - 0.5f) * 2f, (Mathf.PerlinNoise(seedY, t) - 0.5f) * 2f) * s;
+            float s = trauma * trauma * 0.9f;
+            Vector2 off = new Vector2((Mathf.PerlinNoise(seedX, t) - 0.5f) * 2f, (Mathf.PerlinNoise(seedY, t) - 0.5f) * 2f) * s + kick;
             float z = size * (1f - punch * 0.12f);
             if (Cam != null) Cam.orthographicSize = z;
             if (punch <= 0f) punchAtSet = false;

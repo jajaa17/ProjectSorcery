@@ -321,8 +321,7 @@ namespace ProjectSorcery
             VFX.ImpactFrame(ImpactKind.Ko, Center);
             VFX.KO(Center, Def.Look.Aura);
             Audio.Play(Sfx.KO, Center);
-            CameraRig.Punch(0.4f);
-            CameraRig.Shake(0.5f);
+            CameraRig.Moment(Center, 0.8f);
             M.Events.Killed(this, killer);
         }
 

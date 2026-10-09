@@ -515,8 +515,9 @@ namespace ProjectSorcery
             I.FlashSprite(p, Art.Soft, Art.AlphaSoft, new Color(0f, 0f, 0f, 0.95f), 0.5f, 5f, 0.45f, SpriteFx.Kind.Ink, Art.OrderVfx - 1);
             Ring(p, red, 6f, 0.5f, 0.3f);
             Ring(p, Color.black, 4f, 0.4f, 0.2f);
+            CameraRig.Kick(new Vector2(facing, 0f), 0.35f);
+            CameraRig.Moment(p, 1f);
             CameraRig.Punch(0.55f);
-            CameraRig.Shake(0.9f);
             Popups.BlackFlash(p, streak);
         }
 
@@ -568,7 +569,20 @@ namespace ProjectSorcery
                 g = new Ghost(I.transform);
                 I.ghosts.Add(g);
             }
-            g.Begin(f.Rig, f.Def.Look.Aura, life);
+            g.Begin(f.Rig, f.Has(StatusType.Zone) ? new Color(1f, 0.1f, 0.15f) : f.Def.Look.Aura, life, f.Vel);
+        }
+
+        /// <summary>Energy gathering: sparks spawn on a ring and collapse into the point (beam / ultimate charge).</summary>
+        public static void Implode(Vector2 p, float radius, Color c, int n, float life)
+        {
+            if (I == null) return;
+            n = Q(n);
+            for (int i = 0; i < n; i++)
+            {
+                float a = Random.Range(0f, Mathf.PI * 2f);
+                Vector2 o = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * radius * Random.Range(0.7f, 1.2f);
+                Emit(I.sparks, p + o, -o / life, Color.Lerp(c, Color.white, Random.Range(0.1f, 0.6f)), Random.Range(0.06f, 0.14f), life);
+            }
         }
 
         public static void Clear()
@@ -581,13 +595,19 @@ namespace ProjectSorcery
         }
     }
 
-    /// <summary>A fading copy of a fighter's pose (dash trails, fast strikes).</summary>
+    /// <summary>
+    /// Afterimage: a snapshot of the fighter that fades from white-hot to their aura colour, drifts back
+    /// along the motion and stretches in the direction of travel, like a dash smear.
+    /// </summary>
     public sealed class Ghost
     {
         readonly LineRenderer[] lr = new LineRenderer[4];
+        readonly Vector3[][] basePts = new Vector3[4][];
         public bool Active;
         float age, life;
         Color color;
+        Vector2 center, dir;
+        float speed;
 
         public Ghost(Transform parent)
         {
@@ -595,21 +615,25 @@ namespace ProjectSorcery
             {
                 lr[i] = Art.NewLine(parent, "Ghost", Art.AddLine, Art.OrderFighterGlow - 1, 0.1f, 5);
                 lr[i].enabled = false;
+                basePts[i] = new Vector3[24];
             }
         }
 
-        public void Begin(StickRig rig, Color c, float life)
+        public void Begin(StickRig rig, Color c, float life, Vector2 vel)
         {
             this.life = life; age = 0f; color = c; Active = true;
+            center = rig.Hip;
+            speed = vel.magnitude;
+            dir = speed > 0.1f ? vel / speed : Vector2.right;
             for (int i = 0; i < lr.Length; i++)
             {
                 var src = rig.Line(i);
                 if (src == null) { lr[i].enabled = false; continue; }
-                int n = src.positionCount;
+                int n = Mathf.Min(src.positionCount, basePts[i].Length);
                 lr[i].positionCount = n;
-                for (int k = 0; k < n; k++) lr[i].SetPosition(k, src.GetPosition(k));
+                for (int k = 0; k < n; k++) basePts[i][k] = src.GetPosition(k);
                 lr[i].loop = src.loop;
-                lr[i].widthMultiplier = src.widthMultiplier * 1.2f;
+                lr[i].widthMultiplier = src.widthMultiplier * 1.25f;
                 lr[i].enabled = true;
             }
             Update(0f);
@@ -619,9 +643,25 @@ namespace ProjectSorcery
         {
             age += dt;
             if (age >= life) { Stop(); return; }
-            float a = (1f - age / life) * 0.55f;
-            var c = color; c.a = a;
-            for (int i = 0; i < lr.Length; i++) if (lr[i].enabled) { lr[i].startColor = c; lr[i].endColor = c; }
+            float k = age / life;
+            float a = (1f - k) * (1f - k) * 0.6f;
+            var c = Color.Lerp(Color.white, color, Mathf.Clamp01(k * 2.5f)); c.a = a;
+            float stretch = Mathf.Min(0.5f, speed * 0.02f) * k;            // smear along the travel direction
+            Vector2 drift = -dir * Mathf.Min(0.4f, speed * 0.015f) * k;      // trail behind the body
+            for (int i = 0; i < lr.Length; i++)
+            {
+                if (!lr[i].enabled) continue;
+                lr[i].startColor = c; lr[i].endColor = c;
+                int n = lr[i].positionCount;
+                for (int q = 0; q < n; q++)
+                {
+                    Vector2 p = basePts[i][q];
+                    Vector2 d = p - center;
+                    float along = Vector2.Dot(d, dir);
+                    Vector2 np = center + d + dir * along * stretch + drift;
+                    lr[i].SetPosition(q, new Vector3(np.x, np.y, 0f));
+                }
+            }
         }
 
         public void Stop()
@@ -630,4 +670,5 @@ namespace ProjectSorcery
             for (int i = 0; i < lr.Length; i++) lr[i].enabled = false;
         }
     }
+
 }

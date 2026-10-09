@@ -197,7 +197,7 @@ namespace UnityEngine
         public void SetPosition(int i, Vector3 p) { } public Vector3 GetPosition(int i) => default; public void SetPositions(Vector3[] p) { }
     }
     public sealed class TrailRenderer : Renderer
-    {
+    { public LineTextureMode textureMode;
         public float time, minVertexDistance, widthMultiplier; public AnimationCurve widthCurve; public bool emitting;
         public int numCapVertices; public Color startColor, endColor; public void Clear() { }
     }
@@ -206,7 +206,7 @@ namespace UnityEngine
     public sealed class MeshFilter : Component { public Mesh sharedMesh, mesh; }
     public sealed class Mesh : Object
     {
-        public void Clear() { } public void SetVertices(System.Collections.Generic.List<Vector3> v) { } public void SetColors(System.Collections.Generic.List<Color> c) { } public void SetTriangles(System.Collections.Generic.List<int> t, int sub) { }
+        public void Clear() { } public void SetVertices(System.Collections.Generic.List<Vector3> v) { } public void SetColors(System.Collections.Generic.List<Color> c) { } public void SetTriangles(System.Collections.Generic.List<int> t, int sub) { } public void SetUVs(int ch, System.Collections.Generic.List<Vector2> uv) { }
         public Vector3[] vertices; public Vector2[] uv; public Color[] colors; public int[] triangles;
         public void MarkDynamic() { } public void RecalculateBounds() { }
     }
@@ -227,7 +227,7 @@ namespace UnityEngine
     }
     public sealed class Shader : Object { public static Shader Find(string n) => null; }
     public class Material : Object
-    {
+    { public void SetFloat(string n, float v) { } public float GetFloat(string n) => 0f;
         public Material(Shader s) { } public Material(Material m) { }
         public Texture mainTexture; public Color color;
     }

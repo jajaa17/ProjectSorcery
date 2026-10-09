@@ -12,7 +12,7 @@ namespace ProjectSorcery
         readonly Fighter f;
         public readonly RigSolver S;
         readonly GameObject root;
-        readonly LineRenderer legs, torso, arms, head, legsGlow, armsGlow, torsoGlow, headGlow, hair, face, eye, weapon, extraArms, crown, marker;
+        readonly LineRenderer legs, torso, arms, head, caRed, caCyan, legsGlow, armsGlow, torsoGlow, headGlow, hair, face, eye, weapon, extraArms, crown, marker;
         readonly Smear smearA, smearB;
         float idleTime, ghostClock, chargeFx;
         Vector2 tailPos, tailVel;
@@ -57,6 +57,8 @@ namespace ProjectSorcery
             extraArms = Art.NewLine(t, "ExtraArms", Art.Line, o, w * 0.85f, 5);
             crown = Art.NewLine(t, "Crown", Art.AddLine, o + 1, w * 0.6f, 2);
             marker = Art.NewLine(t, "Marker", Art.Line, o + 2, 0.06f, 3);
+            caRed = Art.NewLine(t, "AberrationR", Art.AddLine, Art.OrderFighterGlow, w * 0.9f, CaPts);
+            caCyan = Art.NewLine(t, "AberrationC", Art.AddLine, Art.OrderFighterGlow, w * 0.9f, CaPts);
             hair.numCapVertices = 2; face.numCapVertices = 2;
             extraArms.enabled = f.Def.Look.FourArms;
             smearA = new Smear(t, "SmearA");
@@ -181,6 +183,7 @@ namespace ProjectSorcery
                 SetPts(extraArms, 5, hb, eb, sh, ef, hf); Col(extraArms, body);
             }
 
+            DrawAberration(ink);
             DrawHair(body);
             DrawFace(body, ink);
             DrawWeapon(body, ink);
@@ -189,6 +192,34 @@ namespace ProjectSorcery
 
             // black flash rhythm cue: the fist crackles red-black while the window is open
             if (f.BlackFlashWindowOpen && Random.value < 0.8f) VFX.Sparks(S.HandF, Random.value < 0.5f ? Color.black : new Color(1f, 0.1f, 0.15f), 1, 2f, 0.1f);
+        }
+
+        const int CaPts = 18;
+        static readonly Vector2[] caBuf = new Vector2[CaPts];
+
+        /// <summary>
+        /// Chromatic-aberration pulse: on huge hits the figure splits into red and cyan copies that slide apart along the
+        /// camera's kick and snap back together (a lens-fringe look without a post stack, so it works in the built-in pipeline).
+        /// </summary>
+        void DrawAberration(ImpactFrames.FighterInk ink)
+        {
+            float ca = CameraRig.Aberration;
+            bool on = ca > 0.02f && ink == ImpactFrames.FighterInk.Normal && Settings.VfxQuality > 0 && !f.Dead;
+            caRed.enabled = caCyan.enabled = on;
+            if (!on) return;
+            // one continuous stroke over the whole skeleton (legs, spine, both arms), retracing where it has to
+            caBuf[0] = S.FootB; caBuf[1] = S.KneeB; caBuf[2] = S.Hip; caBuf[3] = S.KneeF; caBuf[4] = S.FootF; caBuf[5] = S.KneeF;
+            caBuf[6] = S.Hip; caBuf[7] = S.SpineMid; caBuf[8] = S.Neck; caBuf[9] = S.ShoulderB; caBuf[10] = S.ElbowB; caBuf[11] = S.HandB;
+            caBuf[12] = S.ElbowB; caBuf[13] = S.ShoulderB; caBuf[14] = S.Neck; caBuf[15] = S.ShoulderF; caBuf[16] = S.ElbowF; caBuf[17] = S.HandF;
+            Vector2 off = CameraRig.AberrationDir * (0.06f + 0.22f * ca) * f.Size;
+            for (int i = 0; i < CaPts; i++)
+            {
+                caRed.SetPosition(i, caBuf[i] + off);
+                caCyan.SetPosition(i, caBuf[i] - off);
+            }
+            float a = Mathf.Clamp01(ca * 1.4f) * 0.75f;
+            Col(caRed, new Color(1f, 0.1f, 0.15f, a));
+            Col(caCyan, new Color(0.1f, 0.9f, 1f, a));
         }
 
         /// <summary>Facing as drawn (flips while the body is turned around mid-spin).</summary>
