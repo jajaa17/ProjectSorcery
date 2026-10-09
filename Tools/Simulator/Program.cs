@@ -235,6 +235,8 @@ static class SimTests
         return rate;
     }
 
+    // drawing rate for anim exports: ANIM_FPS=0 smooth, 24 anime (default, matches the game setting), 12 on twos
+    static int AnimFps = int.TryParse(Environment.GetEnvironmentVariable("ANIM_FPS"), out var af) ? af : Settings.AnimFps;
     static float StepScale = float.TryParse(Environment.GetEnvironmentVariable("TUNE_STEP"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 1f;
     static void Tune(int iterations, int perChar)
     {
@@ -411,6 +413,7 @@ static class SimTests
                         var fi = m.Fighters[k]; var sv = solvers[k];
                         float dt = m.Dt * (fi.Hitstop > 0f ? 0.12f : 1f);
                         sv.Step(dt, 1f);
+                        sv.Present(m.Dt, AnimFps);
                         if (k > 0) sb.Append(',');
                         sb.Append("{\"j\":[");
                         Vector2[] js = { sv.FootB, sv.KneeB, sv.Hip, sv.KneeF, sv.FootF, sv.Neck, sv.HeadC, sv.HandB, sv.ElbowB, sv.ElbowF, sv.HandF, sv.WeaponBase, sv.WeaponTip, sv.SpineMid, sv.ShoulderB, sv.ShoulderF };

@@ -192,6 +192,7 @@ namespace ProjectSorcery
             var t = Target(out float omega, out float zeta, out int id);
             if (id != srcId)
             {
+                snapDrawing = true;   // a new move's first drawing appears immediately (no input lag on the visuals)
                 x[11] += 360f * Mathf.Round((t.Rot - x[11]) / 360f);
                 x[14] += 360f * Mathf.Round((t.Wr - x[14]) / 360f);
                 x[16] += Mathf.Round(t.Tn - x[16]);
@@ -206,6 +207,7 @@ namespace ProjectSorcery
                 hurtKind = !f.Grounded || f.Vel.y > 3f ? 2 : hurtHeavy ? 1 : 0;
                 hurtT = 0f;
                 tumble = 0f;
+                snapDrawing = true;   // the crunch frame shows the instant the hit lands
                 // CRUNCH: the torso and head pop straight into the impact pose (held through hit-stop),
                 // while the arms and legs stay where they were and get dragged along after
                 var impact = (hurtKind == 1 ? HurtGut : HurtHigh)[0];
@@ -251,6 +253,7 @@ namespace ProjectSorcery
                     v[i] *= 0.25f;
                 }
             }
+            if (inHitstop && !wasHitstop) snapDrawing = true;   // impact frame: draw the full extension right now
             wasHitstop = inHitstop;
 
             Simulate(t, dt, omega, zeta);
@@ -600,6 +603,56 @@ namespace ProjectSorcery
                 KneeB.x = hx + (KneeB.x - hx) * sx; FootB.x = hx + (FootB.x - hx) * sx; KneeF.x = hx + (KneeF.x - hx) * sx; FootF.x = hx + (FootF.x - hx) * sx;
                 WeaponBase.x = hx + (WeaponBase.x - hx) * sx; WeaponTip.x = hx + (WeaponTip.x - hx) * sx;
             }
+        }
+
+        // =====================================================================
+        //  stepped output: the "hand-drawn" frame rate
+        // =====================================================================
+        // The springs and IK still run every render frame (and gameplay at 60 Hz), but the pose the renderer sees
+        // only changes on a fixed drawing clock (24 fps by default) and holds in between, like animation drawn on
+        // ones at 24 or on twos at 12. The held pose is stored relative to the root, so travel across the screen
+        // stays smooth while the limbs snap from drawing to drawing. Key moments (a new move starting, a hit
+        // landing, the first frame of hit-stop) force a fresh drawing at once, so the snap never lags the action.
+        const int Joints = 16;
+        readonly Vector2[] held = new Vector2[Joints];
+        float drawClock, heldFace = 1f, heldWidth = 1f;
+        bool hasDrawing, snapDrawing;
+
+        /// <summary>True on render frames where a new drawing was taken (smears and afterimages key off this).</summary>
+        public bool NewDrawing { get; private set; } = true;
+
+        /// <summary>Call once per render frame after <see cref="Step"/> with real (unscaled) time.</summary>
+        public void Present(float realDt, int fps)
+        {
+            if (fps <= 0) { NewDrawing = true; hasDrawing = false; return; }
+            float frame = 1f / fps;
+            drawClock += realDt;
+            NewDrawing = !hasDrawing || snapDrawing || drawClock >= frame;
+            if (snapDrawing) drawClock = 0f;
+            drawClock = Mathf.Repeat(drawClock, frame);   // modulo keeps the beat steady even after a long frame
+            snapDrawing = false;
+            if (NewDrawing) { Capture(); hasDrawing = true; }
+            else Restore();
+        }
+
+        void Capture()
+        {
+            var r = RenderPos;
+            held[0] = Hip - r; held[1] = Neck - r; held[2] = HeadC - r; held[3] = SpineMid - r;
+            held[4] = ShoulderF - r; held[5] = ShoulderB - r; held[6] = ElbowF - r; held[7] = ElbowB - r;
+            held[8] = HandF - r; held[9] = HandB - r; held[10] = KneeF - r; held[11] = KneeB - r;
+            held[12] = FootF - r; held[13] = FootB - r; held[14] = WeaponBase - r; held[15] = WeaponTip - r;
+            heldFace = FaceSign; heldWidth = BodyWidth;
+        }
+
+        void Restore()
+        {
+            var r = RenderPos;
+            Hip = r + held[0]; Neck = r + held[1]; HeadC = r + held[2]; SpineMid = r + held[3];
+            ShoulderF = r + held[4]; ShoulderB = r + held[5]; ElbowF = r + held[6]; ElbowB = r + held[7];
+            HandF = r + held[8]; HandB = r + held[9]; KneeF = r + held[10]; KneeB = r + held[11];
+            FootF = r + held[12]; FootB = r + held[13]; WeaponBase = r + held[14]; WeaponTip = r + held[15];
+            FaceSign = heldFace; BodyWidth = heldWidth;
         }
 
         /// <summary>Two-bone leg IK: the knee always bends forward (toward facing).</summary>

@@ -385,6 +385,8 @@ namespace ProjectSorcery
                         d => { float[] v = { 0f, 0.5f, 1f, 1.5f }; int i = Mathf.Clamp(Mathf.RoundToInt(Settings.Shake * 2f), 0, 3); i = (i + d + 4) % 4; Settings.Shake = v[i]; }); y -= 68f;
                     Step("Impact frame flashes", a, new Vector2(x, y), size, () => Settings.ImpactFlashes ? "Full (anime strobe)" : "Reduced (photosensitive)", d => Settings.ImpactFlashes = !Settings.ImpactFlashes); y -= 68f;
                     Step("Damage numbers", a, new Vector2(x, y), size, () => Settings.DamageNumbers ? "On" : "Off", d => Settings.DamageNumbers = !Settings.DamageNumbers); y -= 68f;
+                    Step("Animation frame rate", a, new Vector2(x, y), size, () => Settings.AnimFps <= 0 ? "Smooth" : Settings.AnimFps == 24 ? "24 fps (anime)" : Settings.AnimFps + " fps (on twos)",
+                        d => Settings.AnimFpsIndex = (Settings.AnimFpsIndex + d + Settings.AnimFpsSteps.Length) % Settings.AnimFpsSteps.Length); y -= 68f;
                     Step("Online input delay", a, new Vector2(x, y), size, () => Settings.InputDelay + " frames", d => Settings.InputDelay = Mathf.Clamp(Settings.InputDelay + d, 1, 8)); y -= 68f;
                     break;
                 case 3:

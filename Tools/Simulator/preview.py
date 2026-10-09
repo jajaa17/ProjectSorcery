@@ -102,7 +102,7 @@ def main():
     sheet = "--sheet" in sys.argv
     for path in sorted(glob.glob(os.path.join(d, "*.jsonl"))):
         meta, frames = load(path)
-        imgs = render(meta, frames)
+        imgs = render(meta, frames, int(os.environ.get("PSTEP", 2)))
         base = os.path.splitext(path)[0]
         if "--nogif" not in sys.argv:
             imgs[0].save(base + ".gif", save_all=True, append_images=imgs[1:], duration=33, loop=0, optimize=False)

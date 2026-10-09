@@ -84,6 +84,7 @@ namespace ProjectSorcery
             if (!visible) return;
 
             S.Step(dt, alpha);
+            S.Present(Mathf.Min(Time.unscaledDeltaTime, 0.1f), Settings.AnimFps);
             Effects(dt);
             Draw();
         }

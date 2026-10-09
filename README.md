@@ -18,6 +18,7 @@ Stick figures, ink-black impact frames, screen-shattering domain clashes. 71 pla
 - Reverse Cursed Technique healing, Simple Domain, Infinity-style barriers, heavenly restrictions (no cursed energy, invisible to sure-hits, monstrous bodies), adaptation, shikigami, binding vows and more
 - Hand-keyed stick-fight choreography: every move goes anticipation → snap → follow-through, fists travel in straight lines (IK), blades sweep real arcs with smear frames, spins actually turn the body
 - 11 fighting styles (boxer, martial artist, agile, brute, wrestler, feral, elegant, caster, sword, staff, heavy weapon), each with its own light string, heavy smash, launcher, sweep, dash strike and aerials, plus per-character body language (hand-in-pocket swagger, folded arms, tall and arrogant…)
+- Hand-drawn timing: gameplay and input run at 60 Hz while fighters are drawn at 24 fps (or 12 fps on twos, or smooth) in Settings → Feel; travel stays smooth, limbs snap from drawing to drawing, and hits force a fresh drawing instantly
 - Weight: hit-stop freezes on impact, the camera punches toward the hit, full-charge smashes slow time, combos decay and break so nobody gets stuck on a wall
 
 **Modes**
