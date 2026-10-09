@@ -25,6 +25,11 @@ namespace UnityEngine.InputSystem
         F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12
     }
     public class InputDevice { }
+    public class Mouse : InputDevice
+    {
+        public static Mouse current => null;
+        public UnityEngine.InputSystem.Controls.ButtonControl leftButton, rightButton, middleButton;
+    }
     public class Keyboard : InputDevice
     {
         public static Keyboard current => null;

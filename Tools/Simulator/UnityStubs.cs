@@ -93,7 +93,7 @@ namespace UnityEngine
         public static float Sqrt(float f) => (float)Math.Sqrt(f); public static float Abs(float f) => Math.Abs(f); public static int Abs(int f) => Math.Abs(f);
         public static float Min(float a, float b) => a < b ? a : b; public static int Min(int a, int b) => a < b ? a : b; public static float Max(float a, float b) => a > b ? a : b; public static int Max(int a, int b) => a > b ? a : b;
         public static float Pow(float a, float b) => (float)Math.Pow(a, b); public static float Exp(float a) => (float)Math.Exp(a); public static float Sign(float f) => f >= 0f ? 1f : -1f;
-        public static float Clamp(float v, float a, float b) => v < a ? a : v > b ? b : v; public static int Clamp(int v, int a, int b) => v < a ? a : v > b ? b : v; public static float Clamp01(float v) => Clamp(v, 0, 1);
+        public static float Clamp(float v, float a, float b) => v < a ? a : v > b ? b : v; public static int Clamp(int v, int a, int b) => v < a ? a : v > b ? b : v; public static float Clamp01(float v) => Clamp(v, 0, 1); public static float Round(float f) => (float)Math.Round(f); public static float Acos(float f) => (float)Math.Acos(f); public static float InverseLerp(float a, float b, float v) => a != b ? Clamp01((v - a) / (b - a)) : 0f;
         public static float Lerp(float a, float b, float t) => a + (b - a) * Clamp01(t);
         public static float Repeat(float t, float l) => Clamp(t - (float)Math.Floor(t / l) * l, 0f, l);
         public static float DeltaAngle(float a, float b) { float d = Repeat(b - a, 360f); if (d > 180f) d -= 360f; return d; }
@@ -206,6 +206,7 @@ namespace UnityEngine
     public sealed class MeshFilter : Component { public Mesh sharedMesh, mesh; }
     public sealed class Mesh : Object
     {
+        public void Clear() { } public void SetVertices(System.Collections.Generic.List<Vector3> v) { } public void SetColors(System.Collections.Generic.List<Color> c) { } public void SetTriangles(System.Collections.Generic.List<int> t, int sub) { }
         public Vector3[] vertices; public Vector2[] uv; public Color[] colors; public int[] triangles;
         public void MarkDynamic() { } public void RecalculateBounds() { }
     }
@@ -301,7 +302,7 @@ namespace UnityEngine
     }
     public static class Input
     {
-        public static bool GetKey(KeyCode k) => false; public static bool GetKeyDown(KeyCode k) => false; public static string[] GetJoystickNames() => null;
+        public static bool GetKey(KeyCode k) => false; public static bool GetKeyDown(KeyCode k) => false; public static bool GetMouseButton(int b) => false; public static string[] GetJoystickNames() => null;
     }
     public enum RuntimeInitializeLoadType { AfterSceneLoad, BeforeSceneLoad }
     [AttributeUsage(AttributeTargets.Method)] public sealed class RuntimeInitializeOnLoadMethodAttribute : Attribute { public RuntimeInitializeOnLoadMethodAttribute(RuntimeInitializeLoadType t) { } }

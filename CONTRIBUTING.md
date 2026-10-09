@@ -49,6 +49,8 @@ d.Kit = () => new Ability[]
 - **Passives** (`Passive.RCT`, `Passive.Infinity`, `Passive.HeavenlyRestriction`, `Passive.Flight`, …) are in `Scripts/Fighter/FighterTypes.cs`. `Restricted(d)` sets up a heavenly-restriction body.
 - **Domains** are `DomainDef`s built with `Dom(name, theme, sureHitEffect, colors, refinement, chant lines)`. Sure-hit effects are handled in `Scripts/Domain/DomainSystem.cs`.
 - **AI** uses each ability's `Use` hint (`AIUse.Finisher`, `Zone`, `Escape`, `Heal`, …) plus `Style` and `PreferredRange`, so most fighters need no AI code.
+- **Movement and normal attacks** come from the fighter's style (`Scripts/Fighter/MoveSets.cs`, picked from stance and weapon) with a personal twist derived from the id. For signature body language (a hand in the pocket, folded arms, a different moveset) add an entry to `Scripts/Fighter/Persona.cs`.
+- **Animation** is keyed in `MoveSets.cs` / `Anim.cs` as anticipation → contact → follow-through poses and played by `RigSolver.cs`. Preview changes without Unity: `dotnet run -c Release --project Tools/Simulator -- anim out <id>` then `python3 Tools/Simulator/preview.py out --sheet`.
 - The character select, gallery, portraits, HUD and online lobby pick the new fighter up automatically.
 
 Then balance it:

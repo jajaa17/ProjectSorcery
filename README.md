@@ -16,7 +16,9 @@ Stick figures, ink-black impact frames, screen-shattering domain clashes. 71 pla
 - **Domain clashes**: 2-way *and* 3-way (1v1v1) clashes with anime-style portrait cut-ins and button mashing
 - **Black Flash**: rhythm-timed crits with full-screen ink-inversion impact frames and their own sound design
 - Reverse Cursed Technique healing, Simple Domain, Infinity-style barriers, heavenly restrictions (no cursed energy, invisible to sure-hits, monstrous bodies), adaptation, shikigami, binding vows and more
-- Smooth, spring-driven procedural animation: each hit lands with weight, heavy hits feel heavy
+- Hand-keyed stick-fight choreography: every move goes anticipation → snap → follow-through, fists travel in straight lines (IK), blades sweep real arcs with smear frames, spins actually turn the body
+- 11 fighting styles (boxer, martial artist, agile, brute, wrestler, feral, elegant, caster, sword, staff, heavy weapon), each with its own light string, heavy smash, launcher, sweep, dash strike and aerials, plus per-character body language (hand-in-pocket swagger, folded arms, tall and arrogant…)
+- Weight: hit-stop freezes on impact, the camera punches toward the hit, full-charge smashes slow time, combos decay and break so nobody gets stuck on a wall
 
 **Modes**
 - **Versus**: 1v1, 2v1, 2v2 and 1v1v1 free-for-all, any mix of humans and CPUs
@@ -92,10 +94,10 @@ Secrets are encrypted and never visible in logs, and forks don't get them.
 |---|---|---|---|
 | Move / crouch | `A` `D` / `S` | Arrows | Left stick / D-pad |
 | Jump | `W` / `Space` | `Up` | A / Cross |
-| Light attack | `F` / `J` | `Num1` / `,` | X / Square |
-| Heavy attack | `G` / `K` | `Num2` / `.` | Y / Triangle |
+| Light attack | `F` / `J` / Left click | `Num1` / `,` | X / Square |
+| Heavy attack (hold to charge) | `G` / `K` / Right click | `Num2` / `.` | Y / Triangle |
 | Block | `H` / `L` | `Num3` / `/` | RB / R1 |
-| Dash | `Left Shift` | `Num0` / `Right Shift` | B / Circle |
+| Dash | `Left Shift` / Middle click | `Num0` / `Right Shift` | B / Circle |
 | Skill 1 / 2 / 3 | `R` `T` `Y` (or `U` `I` `O`) | `Num4` `Num5` `Num6` (or `K` `L` `;`) | LB, LT, R3 (or right stick) |
 | Ultimate / Domain | `V` / `P` | `Num+` / `'` | RT / R2 |
 | Pause | `Esc` | `Esc` | Start |
@@ -105,7 +107,9 @@ The alternate keys in brackets are for solo play. They switch off automatically 
 
 **Universal techniques**
 - `Down + Light` sweep, `Down + Heavy` launcher
-- **Black Flash**: land a light hit, then press Heavy *in rhythm*. Nail the window for a critical hit with a 2.5× distortion.
+- **Hold Heavy** to charge a smash; a full charge bursts out as an aura blast that breaks guards
+- **Attack out of a forward dash** for a dash strike
+- **Black Flash**: land a light hit, then press Heavy *in rhythm*. Nail the window for a critical hit with a 2.5× distortion. It's rare: after one lands, the spark needs a few seconds to return (less while you're in the zone).
 - **Hold Block + Down**: Reverse Cursed Technique (heal, if your fighter has it). Inside an enemy domain this becomes **Simple Domain** and reduces the sure-hit.
 - **Block + Dash while being juggled**: Burst out of a combo
 - **Hold a skill button**: chant to empower the technique (if it's chantable)
@@ -183,6 +187,8 @@ cd Tools/Simulator
 dotnet run -c Release -- all          # determinism, smoke test of every fighter, modes, domain clashes
 dotnet run -c Release -- balance 40   # Hard-vs-Hard win-rate survey per fighter
 dotnet run -c Release -- tune 10 80   # auto-tune per-fighter damage/toughness multipliers
+dotnet run -c Release -- anim out vessel,strongest   # export a move showcase, then:
+python3 preview.py out --sheet                       # render preview GIFs of the real animation code
 ```
 
 The numbers in `Scripts/Core/Balance.cs` (`Tuning`) come from the tuner. In the current table every fighter lands between roughly 40% and 60% win rate in Hard-AI duels. CI runs `all` on every pull request.

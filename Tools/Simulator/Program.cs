@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using ProjectSorcery;
+using Vector2 = UnityEngine.Vector2;
 
 static class SimTests
 {
@@ -58,6 +59,7 @@ static class SimTests
         if (mode == "balance") Balance(args.Length > 1 ? int.Parse(args[1]) : 16);
         if (mode == "tune") Tune(int.Parse(args[1]), int.Parse(args[2]));
         if (mode == "art") ExportArt(args.Length > 1 ? args[1] : "art");
+        if (mode == "anim") ExportAnim(args.Length > 1 ? args[1] : "anim", args.Length > 2 ? args[2] : "vessel");
 
         Console.WriteLine($"Done in {sw.Elapsed.TotalSeconds:F1}s, failures: {failures}");
         return failures == 0 ? 0 : 1;
@@ -350,5 +352,84 @@ static class SimTests
         uint c = 0xFFFFFFFF;
         foreach (byte b in d) { c ^= b; for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1; }
         return c ^ 0xFFFFFFFF;
+    }
+
+    // ------------------------------------------------------------------ animation preview export
+    // Plays a scripted move showcase per fighter against a dummy and records the solved skeleton every tick
+    // (the exact output of RigSolver), for rendering preview GIFs outside Unity.
+    static void ExportAnim(string dir, string idList)
+    {
+        System.IO.Directory.CreateDirectory(dir);
+        foreach (var id in idList.Split(','))
+        {
+            int ci = Roster.IndexOf(id);
+            var cfg = new MatchConfig { Mode = GameMode.Training, Layout = TeamLayout.Duel, RoundsToWin = 1, RoundTime = 0f, Arena = 0, Seed = 7, InfiniteCe = true };
+            cfg.Slots.Add(new SlotConfig { Control = SlotControl.Local, Character = ci, Team = 0, Device = 0 });
+            cfg.Slots.Add(new SlotConfig { Control = SlotControl.Cpu, Character = Roster.IndexOf("vessel"), Team = 1, Diff = Difficulty.Dummy });
+            var m = Make(cfg);
+            var bits = new ushort[8];
+            for (int i = 0; i < 400 && !m.Mode.InputEnabled; i++) m.SimTick(bits);
+            var me = m.Fighters[0]; var dummy = m.Fighters[1];
+            var solvers = new[] { new RigSolver(me), new RigSolver(dummy) };
+
+            // script: (label, ticks, bits per tick); presses are single-tick edges
+            var script = new List<(string label, ushort[] seq, bool place)>();
+            ushort[] Hold(ushort b, int n) { var a = new ushort[n]; for (int i = 0; i < n; i++) a[i] = b; return a; }
+            ushort[] Seq(params (ushort b, int n)[] parts) { var l = new List<ushort>(); foreach (var p in parts) l.AddRange(Hold(p.b, p.n)); return l.ToArray(); }
+            script.Add(("idle", Hold(0, 50), true));
+            script.Add(("walk", Seq((IB.Left, 40), (0, 8), (IB.Right, 45), (0, 20)), false));
+            script.Add(("light string", Seq((IB.Light, 1), (0, 15), (IB.Light, 1), (0, 15), (IB.Light, 1), (0, 17), (IB.Light, 1), (0, 40)), true));
+            script.Add(("heavy", Seq((IB.Heavy, 1), (0, 55)), true));
+            script.Add(("charged heavy", Seq((IB.Heavy, 46), (0, 55)), true));
+            script.Add(("launcher", Seq((IB.Down | IB.Heavy, 1), (IB.Down, 6), (0, 50)), true));
+            script.Add(("sweep", Seq((IB.Down | IB.Light, 1), (IB.Down, 6), (0, 40)), true));
+            script.Add(("dash strike", Seq((IB.Right | IB.Dash, 1), (IB.Right, 4), (IB.Light, 1), (0, 50)), false));
+            script.Add(("air", Seq((IB.Jump, 1), (0, 10), (IB.Light, 1), (0, 14), (IB.Light, 1), (0, 14), (IB.Heavy, 1), (0, 50)), true));
+            script.Add(("skill", Seq((IB.S1, 1), (0, 70)), true));
+
+            using var w = new System.IO.StreamWriter(System.IO.Path.Combine(dir, id + ".jsonl"));
+            var col = me.Def.Look.Aura;
+            w.WriteLine($"{{\"id\":\"{id}\",\"name\":\"{me.Def.Title}\",\"weapon\":\"{me.Def.Look.Weapon}\",\"aura\":[{col.r:F3},{col.g:F3},{col.b:F3}],\"size\":{me.Size:F3},\"dsize\":{dummy.Size:F3}}}");
+            foreach (var step in script)
+            {
+                if (step.place)
+                {
+                    dummy.Pos = dummy.PrevPos = new Vector2(Math.Clamp(me.Pos.x + 1.9f, m.Arena.Left + 1f, m.Arena.Right - 1f), 0f);
+                    dummy.Vel = Vector2.zero; dummy.Hp = dummy.MaxHp;
+                    if (dummy.Pos.x - me.Pos.x < 1.2f) { me.Pos = me.PrevPos = new Vector2(dummy.Pos.x - 1.9f, 0f); }
+                }
+                foreach (var b in step.seq)
+                {
+                    bits[0] = b;
+                    m.SimTick(bits);
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append("{\"label\":\"").Append(step.label).Append("\",\"f\":[");
+                    for (int k = 0; k < 2; k++)
+                    {
+                        var fi = m.Fighters[k]; var sv = solvers[k];
+                        float dt = m.Dt * (fi.Hitstop > 0f ? 0.12f : 1f);
+                        sv.Step(dt, 1f);
+                        if (k > 0) sb.Append(',');
+                        sb.Append("{\"j\":[");
+                        Vector2[] js = { sv.FootB, sv.KneeB, sv.Hip, sv.KneeF, sv.FootF, sv.Neck, sv.HeadC, sv.HandB, sv.ElbowB, sv.ElbowF, sv.HandF, sv.WeaponBase, sv.WeaponTip };
+                        for (int q = 0; q < js.Length; q++) { if (q > 0) sb.Append(','); sb.Append($"[{js[q].x:F3},{js[q].y:F3}]"); }
+                        sb.Append("],\"face\":").Append(fi.Facing * (int)sv.FaceSign);
+                        sb.Append(",\"strike\":").Append(sv.Striking ? 1 : 0);
+                        sb.Append(",\"clip\":\"").Append(sv.Clip != null ? sv.Clip.Name : fi.State.ToString()).Append('"');
+                        var limb = sv.Clip != null ? sv.Clip.Smear : Limb.None;
+                        sv.SmearSegment(limb, false, out var a0, out var b0);
+                        sv.SmearSegment(limb, true, out var a1, out var b1);
+                        sb.Append($",\"limb\":\"{limb}\",\"sm\":[[{a0.x:F3},{a0.y:F3},{b0.x:F3},{b0.y:F3}],[{a1.x:F3},{a1.y:F3},{b1.x:F3},{b1.y:F3}]]");
+                        sb.Append(",\"hs\":").Append(fi.Hitstop > 0f ? 1 : 0);
+                        sb.Append(",\"charge\":").Append(sv.Charging ? 1 : 0);
+                        sb.Append(",\"contact\":").Append(sv.Contact ? 1 : 0);
+                        sb.Append('}');
+                    }
+                    sb.Append("]}");
+                    w.WriteLine(sb.ToString());
+                }
+            }
+            Console.WriteLine("  exported " + id);
+        }
     }
 }
