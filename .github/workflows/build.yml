@@ -72,6 +72,33 @@ jobs:
           name: ProjectSorcery-${{ matrix.name }}
           path: ProjectSorcery-${{ matrix.name }}.zip
 
+      # Smoke-test the real Linux player and capture README screenshots (software OpenGL on a virtual display)
+      - name: Run screenshot tour
+        if: matrix.targetPlatform == 'StandaloneLinux64'
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libgl1-mesa-dri libglu1-mesa > /dev/null
+          sudo chmod -R a+rwX build
+          EXE=$(find build/StandaloneLinux64 -maxdepth 1 -type f -name 'ProjectSorcery*' ! -name '*.so' | head -1)
+          chmod +x "$EXE"
+          export LIBGL_ALWAYS_SOFTWARE=1
+          timeout 900 xvfb-run -a -s "-screen 0 1920x1080x24" "$EXE" -force-glcore -screen-fullscreen 0 -screen-width 1920 -screen-height 1080 \
+            -logFile "$GITHUB_WORKSPACE/player.log" -screenshots "$GITHUB_WORKSPACE/screenshots" || true
+          grep -E "ScreenshotTour|Exception|Error" "$GITHUB_WORKSPACE/player.log" | head -50 || true
+          ls -la screenshots
+          cd screenshots && zip -q "$GITHUB_WORKSPACE/ProjectSorcery-Screenshots.zip" *.png
+
+      - name: Upload screenshots and player log
+        if: matrix.targetPlatform == 'StandaloneLinux64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectSorcery-Screenshots
+          path: |
+            ProjectSorcery-Screenshots.zip
+            player.log
+          if-no-files-found: ignore
+
   release:
     name: Publish release
     needs: build

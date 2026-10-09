@@ -15,6 +15,7 @@ namespace ProjectSorcery
         HUD hud;
         UIScreen screen;
         public MatchConfig LastConfig { get; private set; }
+        public Match CurrentMatch => match;
         public bool Paused => match != null && match.Paused;
         bool demo;
         float resultsDelay;
@@ -51,6 +52,7 @@ namespace ProjectSorcery
             UIRoot.SetFade(1f);
             UIRoot.FadeTo(0f);
             ShowMainMenu();
+            ScreenshotTour.TryStart(gameObject);   // -screenshots <dir> (CI / store-page captures)
         }
 
         void Update()

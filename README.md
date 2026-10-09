@@ -27,6 +27,9 @@ Stick figures, ink-black impact frames, screen-shattering domain clashes. 71 pla
 - **Online**: host or join over LAN / the internet (lockstep netcode, 2 to 4 players)
 
 **Presentation**
+
+![Domain interiors](docs/images/domains.jpg)
+
 - Procedural VFX: cursed-energy auras, slashes, beams, shockwaves, impact frames, camera shake and zoom
 - Procedural audio: every punch, slash, chant and domain drone is synthesized at runtime, plus generated music
 - 7 hand-painted-by-code arenas (one is raid-only)
@@ -123,6 +126,8 @@ The netcode is deterministic lockstep: only button presses are sent, the simulat
 ---
 
 ## Roster
+
+![All 72 fighters](docs/images/roster.jpg)
 
 <details>
 <summary><b>Show all 72 fighters</b></summary>

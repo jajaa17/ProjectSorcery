@@ -16,6 +16,7 @@ dotnet run -c Release --project Tools/Simulator -- <mode>
 | `modes` | 1v1v1, 2v2 and 2v1 matches, Survival wave progression, and 12 Calamity Raids with three Hard CPUs. |
 | `domains` | Every domain user expands; 2-way and 3-way clashes resolve. |
 | `balance N` | N random Hard-vs-Hard duels per fighter; prints win rates, damage and match length. |
+| `art DIR` | Exports every character portrait and domain interior the game paints at runtime as PNG files. |
 | `tune ITER PERCHAR` | Iteratively adjusts each fighter's damage and toughness multipliers toward a 50% win rate and prints a `TABLE` to paste into `Balance.Tuning`. Set `TUNE_STEP=0.5` to take smaller steps when refining an existing table. |
 
 If you use a new Unity API in gameplay code and the simulator stops compiling, add a minimal stand-in for it to `UnityStubs.cs`. Anything visual can be an empty method.

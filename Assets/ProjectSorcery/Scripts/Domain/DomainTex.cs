@@ -12,13 +12,21 @@ namespace ProjectSorcery
         public static Texture2D Get(DomainDef d)
         {
             if (cache.TryGetValue(d, out var t)) return t;
-            var p = new TexPainter(W, H, (uint)(d.Name.GetHashCode() & 0x7fffffff) + 1u);
+            var p = new TexPainter(W, H, StableHash(d.Name));
             Paint(p, d);
             p.Vignette(0.55f);
             p.Grain(0.03f);
             t = p.ToTexture("domain_" + d.Theme);
             cache[d] = t;
             return t;
+        }
+
+        // string.GetHashCode differs between runtimes; FNV-1a keeps every domain looking the same everywhere
+        static uint StableHash(string s)
+        {
+            uint h = 2166136261u;
+            foreach (char c in s) { h ^= c; h *= 16777619u; }
+            return h == 0 ? 1u : h;
         }
 
         static void Paint(TexPainter p, DomainDef d)

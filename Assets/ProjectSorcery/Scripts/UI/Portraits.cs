@@ -21,7 +21,7 @@ namespace ProjectSorcery
             return sp;
         }
 
-        static Texture2D Paint(CharacterDef d)
+        internal static Texture2D Paint(CharacterDef d)
         {
             var p = new TexPainter(S, S, (uint)(d.Index * 7919 + 13));
             var look = d.Look;

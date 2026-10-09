@@ -57,6 +57,7 @@ static class SimTests
         if (mode == "all" || mode == "domains") Domains();
         if (mode == "balance") Balance(args.Length > 1 ? int.Parse(args[1]) : 16);
         if (mode == "tune") Tune(int.Parse(args[1]), int.Parse(args[2]));
+        if (mode == "art") ExportArt(args.Length > 1 ? args[1] : "art");
 
         Console.WriteLine($"Done in {sw.Elapsed.TotalSeconds:F1}s, failures: {failures}");
         return failures == 0 ? 0 : 1;
@@ -287,5 +288,67 @@ static class SimTests
             var d = Roster.Get(i);
             Console.WriteLine($"  {d.Id,-18} {wins[i] / (float)Math.Max(1, games[i]),6:P0}  ({games[i]} games, avg dmg {dmg[i] / Math.Max(1, games[i]),5:F0})  tier {d.Tier}");
         }
+    }
+
+    // ------------------------------------------------------------------ export the game's procedural art as PNGs
+    static void ExportArt(string dir)
+    {
+        Console.WriteLine("[art] exporting portraits and domain interiors to " + dir);
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dir, "portraits"));
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dir, "domains"));
+        foreach (var d in Roster.All)
+            SavePng(Portraits.Paint(d), System.IO.Path.Combine(dir, "portraits", $"{d.Index:00}_{d.Id}.png"));
+        var seen = new HashSet<DomainDef>();
+        foreach (var d in Roster.All)
+            if (d.Domain != null && seen.Add(d.Domain))
+                SavePng(DomainTex.Get(d.Domain), System.IO.Path.Combine(dir, "domains", Slug(d.Domain.Name) + ".png"));
+        Console.WriteLine($"  {Roster.Count} portraits, {seen.Count} domains");
+    }
+
+    static string Slug(string s) => new string(s.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()).Trim('_');
+
+    static void SavePng(UnityEngine.Texture2D t, string path)
+    {
+        int w = t.W, h = t.H;
+        var raw = new byte[(w * 4 + 1) * h];
+        for (int y = 0; y < h; y++)
+        {
+            int row = (h - 1 - y) * (w * 4 + 1); // Unity textures start at the bottom row
+            raw[row] = 0;
+            for (int x = 0; x < w; x++)
+            {
+                var c = t.Pixels[y * w + x];
+                int o = row + 1 + x * 4;
+                raw[o] = c.r; raw[o + 1] = c.g; raw[o + 2] = c.b; raw[o + 3] = c.a;
+            }
+        }
+        using var fs = System.IO.File.Create(path);
+        fs.Write(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
+        var ihdr = new byte[13];
+        BE(ihdr, 0, (uint)w); BE(ihdr, 4, (uint)h); ihdr[8] = 8; ihdr[9] = 6;
+        Chunk(fs, "IHDR", ihdr);
+        var ms = new System.IO.MemoryStream();
+        using (var z = new System.IO.Compression.ZLibStream(ms, System.IO.Compression.CompressionLevel.Optimal, true)) z.Write(raw);
+        Chunk(fs, "IDAT", ms.ToArray());
+        Chunk(fs, "IEND", Array.Empty<byte>());
+    }
+
+    static void BE(byte[] b, int o, uint v) { b[o] = (byte)(v >> 24); b[o + 1] = (byte)(v >> 16); b[o + 2] = (byte)(v >> 8); b[o + 3] = (byte)v; }
+
+    static void Chunk(System.IO.Stream s, string type, byte[] data)
+    {
+        var len = new byte[4]; BE(len, 0, (uint)data.Length); s.Write(len);
+        var td = new byte[4 + data.Length];
+        for (int i = 0; i < 4; i++) td[i] = (byte)type[i];
+        Buffer.BlockCopy(data, 0, td, 4, data.Length);
+        s.Write(td);
+        var crc = new byte[4]; BE(crc, 0, Crc(td)); s.Write(crc);
+    }
+
+    static uint Crc(byte[] d)
+    {
+        uint c = 0xFFFFFFFF;
+        foreach (byte b in d) { c ^= b; for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1; }
+        return c ^ 0xFFFFFFFF;
     }
 }

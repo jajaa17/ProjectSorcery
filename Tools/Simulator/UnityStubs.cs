@@ -60,7 +60,12 @@ namespace UnityEngine
         public static Color white => new Color(1, 1, 1, 1); public static Color black => new Color(0, 0, 0, 1); public static Color red => new Color(1, 0, 0, 1);
         public static Color clear => new Color(0, 0, 0, 0); public static Color gray => new Color(.5f, .5f, .5f, 1);
         public static Color Lerp(Color a, Color b, float t) { t = Mathf.Clamp01(t); return new Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t); }
-        public static Color HSVToRGB(float h, float s, float v) => new Color(v, v, v, 1);
+        public static Color HSVToRGB(float h, float s, float v)
+        {
+            h = (h % 1f + 1f) % 1f * 6f; int i = (int)Math.Floor(h); float f = h - i;
+            float p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f));
+            switch (i % 6) { case 0: return new Color(v, t, p); case 1: return new Color(q, v, p); case 2: return new Color(p, v, t); case 3: return new Color(p, q, v); case 4: return new Color(t, p, v); default: return new Color(v, p, q); }
+        }
         public static Color operator *(Color a, float b) => new Color(a.r * b, a.g * b, a.b * b, a.a * b);
         public static Color operator +(Color a, Color b) => new Color(a.r + b.r, a.g + b.g, a.b + b.b, a.a + b.a);
         public static implicit operator Color(Color32 c) => new Color(c.r / 255f, c.g / 255f, c.b / 255f, c.a / 255f);
@@ -72,7 +77,8 @@ namespace UnityEngine
     {
         public byte r, g, b, a;
         public Color32(byte r, byte g, byte b, byte a) { this.r = r; this.g = g; this.b = b; this.a = a; }
-        public static implicit operator Color32(Color c) => default;
+        public static implicit operator Color32(Color c) => new Color32(B(c.r), B(c.g), B(c.b), B(c.a));
+        static byte B(float v) => (byte)Math.Round(Math.Clamp(v, 0f, 1f) * 255f);
     }
     public struct Rect
     {
@@ -124,9 +130,20 @@ namespace UnityEngine
         public static string GetString(string k, string d) => d; public static void SetString(string k, string v) { }
         public static void Save() { }
     }
+    public class WaitForSecondsRealtime { public WaitForSecondsRealtime(float s) { } }
+    public class WaitForEndOfFrame { }
+    public static class ScreenCapture { public static Texture2D CaptureScreenshotAsTexture() => new Texture2D(1, 1, TextureFormat.RGBA32, false); }
+    public static class ImageConversion { public static byte[] EncodeToPNG(this Texture2D t) => new byte[0]; }
     public static class ColorUtility
     {
-        public static bool TryParseHtmlString(string s, out Color c) { c = default; return true; }
+        public static bool TryParseHtmlString(string s, out Color c)
+        {
+            c = default;
+            if (string.IsNullOrEmpty(s) || s[0] != '#' || (s.Length != 7 && s.Length != 9)) return false;
+            uint v = Convert.ToUInt32(s.Substring(1), 16); if (s.Length == 7) v = (v << 8) | 0xFF;
+            c = new Color(((v >> 24) & 255) / 255f, ((v >> 16) & 255) / 255f, ((v >> 8) & 255) / 255f, (v & 255) / 255f);
+            return true;
+        }
         public static string ToHtmlStringRGB(Color c) => "";
     }
     public class Object
@@ -203,8 +220,9 @@ namespace UnityEngine
     public enum FilterMode { Point, Bilinear }
     public sealed class Texture2D : Texture
     {
-        public Texture2D(int w, int h, TextureFormat f, bool mip) { }
-        public void SetPixels32(Color32[] c) { } public void Apply(bool mips, bool nonReadable) { } public void Apply() { }
+        public readonly int W, H; public Color32[] Pixels;
+        public Texture2D(int w, int h, TextureFormat f, bool mip) { W = w; H = h; }
+        public void SetPixels32(Color32[] c) { Pixels = (Color32[])c.Clone(); } public void Apply(bool mips, bool nonReadable) { } public void Apply() { }
     }
     public sealed class Shader : Object { public static Shader Find(string n) => null; }
     public class Material : Object
