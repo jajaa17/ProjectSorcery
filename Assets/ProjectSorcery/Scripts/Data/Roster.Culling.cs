@@ -258,15 +258,15 @@ namespace ProjectSorcery
 
             // ---------------------------------------------------------- Liquid metal
             d = C("metal", "Yorune", "Liquid Metal", "Forge", Era.Manga, Stance.Elegant, Hair.Long, FaceMark.None, Weapon.None, "#d6dce8", "#ff9ad0", "#e8ecf4");
-            d.Hp = 1000; d.Ce = 140; d.CeRegen = 8.5f; d.Tier = 1; d.Domain = DomSpheres; d.Style = AIStyle.Zoner; d.PreferredRange = 5f;
+            d.Hp = 1150; d.Ce = 150; d.CeRegen = 9.5f; d.Tier = 1; d.Domain = DomSpheres; d.Style = AIStyle.Zoner; d.PreferredRange = 5f;
             d.Bio = "Constructs anything from liquid metal, including armor shaped like an insect. Obsessed with a love that can crush.";
             d.Kit = () => new Ability[]
             {
-                new ProjectileAb { Name = "Forged Lance", Desc = "A metal lance formed in mid-air.", Cost = 15, Cooldown = 3f, Pose = FPose.Point, Color = H("#d6dce8"),
-                    Proj = new ProjDef { Vis = ProjVis.Needle, Color = H("#d6dce8"), Damage = 45, Speed = 26f, Size = 0.6f, Pierce = 1, Type = DamageType.Pierce, Knockback = new Vector2(6f, 2f), Launch = Sfx.Slash, Impact = Sfx.Nail } },
+                new ProjectileAb { Name = "Forged Lance", Desc = "A metal lance formed in mid-air.", Cost = 14, Cooldown = 2.2f, Pose = FPose.Point, Color = H("#d6dce8"),
+                    Proj = new ProjDef { Vis = ProjVis.Needle, Color = H("#d6dce8"), Damage = 55, Speed = 28f, Size = 0.6f, Pierce = 1, Type = DamageType.Pierce, Knockback = new Vector2(6f, 2f), Launch = Sfx.Slash, Impact = Sfx.Nail } },
                 new BuffAb { Name = "Insect Armor", Desc = "Wraps herself in jointed metal armor.", Cost = 30, Cooldown = 15f, Status = StatusType.DefenseUp, Mag = 0.4f, Status2 = StatusType.Haste, Mag2 = 0.2f, Duration = 8f, Color = H("#d6dce8") },
                 new ProjectileAb { Name = "Metal Rain", Desc = "Blades rain from overhead.", Cost = 35, Cooldown = 10f, Count = 5, Interval = 0.07f, FromSky = true, Pose = FPose.Raise, Color = H("#d6dce8"),
-                    Proj = new ProjDef { Vis = ProjVis.Metal, Color = H("#d6dce8"), Damage = 28, Speed = 24f, Size = 0.5f, Type = DamageType.Slash, Knockback = new Vector2(2f, -4f), Launch = Sfx.Slash } },
+                    Proj = new ProjDef { Vis = ProjVis.Metal, Color = H("#d6dce8"), Damage = 34, Speed = 24f, Size = 0.5f, Type = DamageType.Slash, Knockback = new Vector2(2f, -4f), Launch = Sfx.Slash } },
                 DomainUlt(DomSpheres, "A perfect sphere of mass crushes each enemy once - nothing stops it.", "#d6dce8"),
             };
 
