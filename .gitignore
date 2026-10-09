@@ -37,3 +37,6 @@ crashlytics-build.properties
 !Tools/Simulator/Simulator.csproj
 Tools/Simulator/bin/
 Tools/Simulator/obj/
+
+# Python caches (Tools/Simulator/preview.py)
+__pycache__/
