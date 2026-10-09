@@ -1,0 +1,19 @@
+name: Simulation tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Determinism, smoke, modes and domain tests
+        run: dotnet run -c Release --project Tools/Simulator -- all
+      - name: Balance survey (informational)
+        run: dotnet run -c Release --project Tools/Simulator -- balance 20

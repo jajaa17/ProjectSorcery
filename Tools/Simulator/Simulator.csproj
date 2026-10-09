@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Headless Project Sorcery simulator.
+    Compiles the real gameplay code (Assets/ProjectSorcery/Scripts) against tiny Unity API stand-ins,
+    so the deterministic 60 Hz simulation can run thousands of AI-vs-AI matches in seconds.
+    Usage (see README.md in this folder): dotnet run -c Release, then a mode: all | determinism | smoke | modes | domains | balance N | tune ITER PERCHAR
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>9.0</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>ENABLE_INPUT_SYSTEM</DefineConstants>
+    <NoWarn>CS0168;CS0219;CS0414;CS0649;CS0169;CS0067;CS8321;CS0162;CS0628</NoWarn>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="UnityStubs.cs" />
+    <Compile Include="InputSystemStubs.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="../../Assets/ProjectSorcery/Scripts/**/*.cs" />
+  </ItemGroup>
+</Project>
