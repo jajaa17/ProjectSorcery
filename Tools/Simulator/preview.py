@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 W, H, SS = int(os.environ.get("PW", 640)), int(os.environ.get("PH", 360)), 2            # output size, supersampling
 PPM = int(os.environ.get("PPM", 78))                          # pixels per metre
 GROUND = 0.84                     # ground line height (fraction of image)
-BONES = [(0, 1), (1, 2), (2, 3), (3, 4), (2, 5), (7, 8), (8, 5), (5, 9), (9, 10)]
+BONES = [(0, 1), (1, 2), (2, 3), (3, 4), (2, 13), (13, 5), (7, 8), (8, 5), (5, 9), (9, 10)]
 
 
 def font(size):

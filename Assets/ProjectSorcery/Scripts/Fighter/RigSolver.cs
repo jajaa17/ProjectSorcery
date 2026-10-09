@@ -24,12 +24,45 @@ namespace ProjectSorcery
         const int CH = Kf.Count;
         readonly float[] x = new float[CH], v = new float[CH];
         static readonly float[] chMul = { 1f, 0.85f, 0.85f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1.15f, 0.5f, 1f, 1.1f, 1f, 1.25f };
+        // taking a hit: chest and head whip first, arms and legs trail behind (asynchronous whiplash)
+        static readonly float[] chHurt = { 2.0f, 0.42f, 0.42f, 1f, 0.42f, 0.42f, 1f, 0.6f, 0.6f, 0.6f, 0.6f, 1.2f, 2.6f, 1.1f, 1f, 1.5f, 1.25f };
+        bool hurtMode;
+        float hurtT = 9f, squash, squashV, bend, bendV;
+        int hurtKind;   // 0 = head/high, 1 = gut/heavy, 2 = airborne
+
+        // impact -> whiplash -> reel (overshoot) -> heavy settle, keyed in seconds after the hit
+        static readonly float[] HurtTimes = { 0f, 0.07f, 0.2f, 0.44f };
+        static readonly Kf[] HurtHigh =
+        {
+            Pose.P(-12, -40, -10, -30, 10, -26, -40, 24, -6, 0, -42, 0.04f).ToKf(),
+            Pose.P(-32, 40, 80, 50, 90, -30, -46, 30, 10, 0, -30, 0.08f).ToKf(),
+            Pose.P(-24, -30, 20, -10, 40, -46, -60, 40, 20, 0, -12, 0.12f, 0, -0.15f).ToKf(),
+            Pose.P(4, 10, 90, 30, 110, -26, -40, 30, 0, 0, 6, 0.1f).ToKf(),
+        };
+        static readonly Kf[] HurtGut =
+        {
+            Pose.P(44, 20, 10, 30, 20, -18, -26, 22, -4, 0, 32, 0.16f).ToKf(),
+            Pose.P(12, 70, 60, 80, 60, -24, -34, 34, 10, 0, 22, 0.1f, 0, -0.1f).ToKf(),
+            Pose.P(-26, 90, 70, 100, 80, -40, -56, 50, 30, 0, -16, 0.12f, 0, -0.22f).ToKf(),
+            Pose.P(20, 20, 40, 30, 60, -30, -50, 36, -4, 0, 20, 0.18f).ToKf(),
+        };
+
+        static Kf SampleKeys(Kf[] keys, float[] times, float t)
+        {
+            int n = keys.Length;
+            if (t >= times[n - 1]) return keys[n - 1];
+            int i = 0;
+            while (i < n - 2 && t >= times[i + 1]) i++;
+            float u = Mathf.Clamp01((t - times[i]) / (times[i + 1] - times[i]));
+            return Kf.Spline(keys[Mathf.Max(0, i - 1)], keys[i], keys[i + 1], keys[Mathf.Min(n - 1, i + 2)], Anim.Apply(i == 0 ? Ease.Snap : Ease.InOut, u));
+        }
 
         float runPhase, idleTime, airTime, flip, tumble, prevPhase = -1f, gripBlend;
         bool wasGrounded = true, hurtHeavy;
         int prevAirJumps = 1, lastFacing, srcId = int.MinValue, prevClip = -1;
 
         // ---------------- outputs
+        public Vector2 SpineMid;
         public Vector2 RenderPos, Hip, Neck, HeadC, HandF, HandB, ElbowF, ElbowB, KneeF, KneeB, FootF, FootB, WeaponBase, WeaponTip;
         public float FaceSign = 1f;            // -1 while turned around mid-spin
         public float BodyWidth = 1f;           // |cos(turn)|, how "side-on" the figure currently reads
@@ -54,12 +87,12 @@ namespace ProjectSorcery
             var idle = Persona.Idle ?? MoveLib.StyleIdle(stance);
             idleK = idle.ToKf();
             Pose guard;
-            if (armed) guard = Pose.P(-4, 40, 150, 60, 140, -26, -40, 30, 2, 0, -2, 0.08f, 20f);
+            if (armed) guard = Pose.P(-4, 40, 150, 60, 140, -26, -28, 30, 22, 0, -2, 0.03f, 20f);
             else
                 switch (stance)
                 {
-                    case Stance.Brawler: guard = Pose.P(-2, 40, 165, 55, 160, -26, -40, 28, 2, 0, 4, 0.1f); break;
-                    case Stance.Martial: guard = Pose.P(0, 40, 150, 80, 110, -26, -38, 30, 0, 0, 0, 0.08f); break;
+                    case Stance.Brawler: guard = Pose.P(-2, 40, 165, 55, 160, -26, -28, 28, 20, 0, 4, 0.04f); break;
+                    case Stance.Martial: guard = Pose.P(0, 40, 150, 80, 110, -26, -28, 30, 22, 0, 0, 0.03f); break;
                     case Stance.Elegant: guard = Pose.P(-4, -12, 12, 70, 150, -14, -18, 16, 2, 0, -4); break;
                     default: guard = Poses.Block; break;
                 }
@@ -165,12 +198,29 @@ namespace ProjectSorcery
             {
                 float imp = f.HitImpulse;
                 hurtHeavy = imp > 1.15f || (!f.Grounded && f.Vel.y > 7f);
+                hurtKind = !f.Grounded || f.Vel.y > 3f ? 2 : hurtHeavy ? 1 : 0;
+                hurtT = 0f;
                 tumble = 0f;
-                v[0] -= 260f * imp;
-                v[12] -= 420f * imp;
-                for (int i = 1; i <= 5; i++) if (i != 3) v[i] += Rand(-1f, 1f) * 2.2f * imp;
-                v[13] += 1.1f * imp;
+                // CRUNCH: the torso and head pop straight into the impact pose (held through hit-stop),
+                // while the arms and legs stay where they were and get dragged along after
+                var impact = (hurtKind == 1 ? HurtGut : HurtHigh)[0];
+                x[0] = Mathf.Lerp(x[0], impact.Lean, 0.75f); x[12] = Mathf.Lerp(x[12], impact.Head, 0.85f); x[13] = Mathf.Lerp(x[13], impact.Drop, 0.6f);
+                v[0] = 0f; v[12] = 0f; v[13] = 0f;
+                x[15] -= 0.08f * imp;                                  // hips shoved back
+                for (int i = 1; i <= 5; i++) if (i != 3) v[i] += Rand(-1f, 1f) * 0.8f * imp;
+                // deformation: the body compresses and the spine bends with the force
+                squash = Mathf.Clamp(0.35f + 0.25f * imp, 0.3f, 1f); squashV = 0f;
+                bend = hurtKind == 1 ? 0.16f + 0.06f * imp : -(0.1f + 0.05f * imp); bendV = 0f;
                 f.HitImpulse = 0f;
+            }
+            hurtT += dt;
+            // the attacker's body whips too: the spine snaps into the blow at contact, then wobbles back
+            if (Contact && Clip != null) { bendV += 2.4f * Clip.Impact; squashV -= 1.2f * Clip.Impact; }
+            // jelly springs for the deformation (underdamped: a little wobble)
+            {
+                const float ws = 24f, zs = 0.3f, wb = 20f, zb = 0.35f;
+                squashV += (-ws * ws * squash - 2f * zs * ws * squashV) * dt; squash += squashV * dt;
+                bendV += (-wb * wb * bend - 2f * zb * wb * bendV) * dt; bend += bendV * dt;
             }
             if (f.GuardImpulse > 0f)
             {
@@ -190,7 +240,7 @@ namespace ProjectSorcery
         {
             var f = F;
             omega = omegaBase * Set.Tempo; zeta = zetaBase;
-            Clip = null; Striking = false; Contact = false; Charging = false;
+            Clip = null; Striking = false; Contact = false; Charging = false; hurtMode = false;
             Kf k;
 
             // ---- scripted technique strikes (rushes, flurries, lunges)
@@ -314,7 +364,12 @@ namespace ProjectSorcery
                 case FState.RCT: k = Anim.Cast(FPose.Channel).Sample(1.2f); k.Lean += Mathf.Sin(idleTime * 3f) * 2f; return k;
                 case FState.Hitstun:
                     omega = 28f; zeta = 0.4f;
-                    if (f.Grounded) return (hurtHeavy ? Anim.HurtGut : Anim.HurtHigh).ToKf();
+                    if (f.Grounded && hurtKind != 2)
+                    {
+                        hurtMode = true;
+                        omega = 26f; zeta = 0.32f;                     // underdamped: overshoot on the reel
+                        return SampleKeys(hurtKind == 1 ? HurtGut : HurtHigh, HurtTimes, hurtT);
+                    }
                     k = Anim.HurtAir.ToKf();
                     if (hurtHeavy)
                     {
@@ -397,7 +452,7 @@ namespace ProjectSorcery
             for (int s = 0; s < steps; s++)
                 for (int i = 0; i < CH; i++)
                 {
-                    float w = omega * chMul[i];
+                    float w = omega * (hurtMode ? chHurt[i] : chMul[i]);
                     float a = w * w * (target[i] - x[i]) - 2f * zeta * w * v[i];
                     v[i] += a * h;
                     x[i] += v[i] * h;
@@ -412,9 +467,9 @@ namespace ProjectSorcery
             var f = F;
             float S = f.Size;
             int fc = f.Facing;
-            float TH = 0.5f * S, SH = 0.5f * S, T = 0.85f * S, HR = 0.25f * S;
+            float TH = 0.5f * S, SH = 0.5f * S, T = 0.85f * S * (1f - 0.2f * Mathf.Clamp(squash, -1f, 1f)), HR = 0.25f * S;
             float drop = Mathf.Clamp(x[13], -0.5f, 0.6f);
-            float thB = x[7] + drop * 35f, shB = x[8] - drop * 55f, thF = x[9] + drop * 35f, shF = x[10] - drop * 55f;
+            float thB = x[7], shB = x[8], thF = x[9], shF = x[10];
 
             Vector2 L(float deg) { float r = deg * Mathf.Deg2Rad; return new Vector2(fc * Mathf.Sin(r), -Mathf.Cos(r)); }
 
@@ -423,7 +478,8 @@ namespace ProjectSorcery
             float dropB = TH * Mathf.Cos(thB * Mathf.Deg2Rad) + SH * Mathf.Cos(shB * Mathf.Deg2Rad);
             float dropF = TH * Mathf.Cos(thF * Mathf.Deg2Rad) + SH * Mathf.Cos(shF * Mathf.Deg2Rad);
             float hipH = Mathf.Max(0.22f * S, Mathf.Max(dropB, dropF));
-            if (drop < 0f) hipH += -drop * S;                     // negative drop = hop / rise
+            // drop lowers the hips (planted feet then bend the knees through IK); negative drop = hop / rise
+            hipH = drop < 0f ? hipH - drop * S : Mathf.Max(0.3f * S, hipH - drop * 0.9f * S);
             bool lying = Mathf.Abs(x[11]) > 50f && (f.State == FState.Knockdown || f.State == FState.Dead) && f.Grounded;
             if (lying) hipH = 0.28f * S;
             float hover = 0f;
@@ -432,11 +488,22 @@ namespace ProjectSorcery
 
             Hip = RenderPos + shiver + new Vector2(fc * x[15] * S, hipH + hover);
             Neck = Hip + up * T;
+            Vector2 fwd = new Vector2(fc * Mathf.Cos(lean), -Mathf.Sin(lean));
+            SpineMid = Vector2.Lerp(Hip, Neck, 0.5f) - fwd * Mathf.Clamp(bend, -0.4f, 0.4f) * S;
             float ht = (x[0] + x[12] * 0.6f) * Mathf.Deg2Rad;
             HeadC = Neck + new Vector2(fc * Mathf.Sin(ht), Mathf.Cos(ht)) * (HR * 1.25f);
 
             KneeB = Hip + L(thB) * TH; FootB = KneeB + L(shB) * SH;
             KneeF = Hip + L(thF) * TH; FootF = KneeF + L(shF) * SH;
+            // foot planting: a grounded foot can't sink into the floor; the knee folds (forward) to absorb it,
+            // otherwise legs keep their keyed, locked-out shape. Segment lengths never change.
+            bool plant = f.Grounded && !lying && f.State != FState.Knockdown && f.State != FState.Dead && hover <= 0f;
+            float floorY = RenderPos.y + shiver.y;
+            if (plant)
+            {
+                if (FootB.y < floorY) Leg(Hip, new Vector2(FootB.x, floorY), TH, SH, fc, out KneeB, out FootB);
+                if (FootF.y < floorY) Leg(Hip, new Vector2(FootF.x, floorY), TH, SH, fc, out KneeF, out FootF);
+            }
 
             // arms: two-bone IK toward the keyed hand positions (straight-line punches)
             Arm(Neck, new Vector2(fc * x[4], x[5]) * S, x[6] * fc, S, out ElbowF, out HandF);
@@ -471,7 +538,7 @@ namespace ProjectSorcery
             if (Mathf.Abs(rot) > 0.01f)
             {
                 Vector2 p = Hip;
-                Neck = Rot(Neck, p, rot); HeadC = Rot(HeadC, p, rot);
+                Neck = Rot(Neck, p, rot); HeadC = Rot(HeadC, p, rot); SpineMid = Rot(SpineMid, p, rot);
                 ElbowB = Rot(ElbowB, p, rot); HandB = Rot(HandB, p, rot); ElbowF = Rot(ElbowF, p, rot); HandF = Rot(HandF, p, rot);
                 KneeB = Rot(KneeB, p, rot); FootB = Rot(FootB, p, rot); KneeF = Rot(KneeF, p, rot); FootF = Rot(FootF, p, rot);
                 WeaponBase = Rot(WeaponBase, p, rot); WeaponTip = Rot(WeaponTip, p, rot);
@@ -484,11 +551,25 @@ namespace ProjectSorcery
             if (Mathf.Abs(sx - 1f) > 0.001f)
             {
                 float hx = Hip.x;
-                Neck.x = hx + (Neck.x - hx) * sx; HeadC.x = hx + (HeadC.x - hx) * sx;
+                Neck.x = hx + (Neck.x - hx) * sx; HeadC.x = hx + (HeadC.x - hx) * sx; SpineMid.x = hx + (SpineMid.x - hx) * sx;
                 ElbowB.x = hx + (ElbowB.x - hx) * sx; HandB.x = hx + (HandB.x - hx) * sx; ElbowF.x = hx + (ElbowF.x - hx) * sx; HandF.x = hx + (HandF.x - hx) * sx;
                 KneeB.x = hx + (KneeB.x - hx) * sx; FootB.x = hx + (FootB.x - hx) * sx; KneeF.x = hx + (KneeF.x - hx) * sx; FootF.x = hx + (FootF.x - hx) * sx;
                 WeaponBase.x = hx + (WeaponBase.x - hx) * sx; WeaponTip.x = hx + (WeaponTip.x - hx) * sx;
             }
+        }
+
+        /// <summary>Two-bone leg IK: the knee always bends forward (toward facing).</summary>
+        static void Leg(Vector2 hip, Vector2 target, float l1, float l2, int fc, out Vector2 knee, out Vector2 foot)
+        {
+            Vector2 rel = target - hip;
+            float d = Mathf.Clamp(rel.magnitude, 0.05f, (l1 + l2) * 0.999f);
+            Vector2 dir = rel.magnitude > 1e-4f ? rel.normalized : Vector2.down;
+            float cosA = Mathf.Clamp((l1 * l1 + d * d - l2 * l2) / (2f * l1 * d), -1f, 1f);
+            float a = Mathf.Acos(cosA);
+            Vector2 k1 = hip + new Vector2(dir.x * Mathf.Cos(a) - dir.y * Mathf.Sin(a), dir.x * Mathf.Sin(a) + dir.y * Mathf.Cos(a)) * l1;
+            Vector2 k2 = hip + new Vector2(dir.x * Mathf.Cos(-a) - dir.y * Mathf.Sin(-a), dir.x * Mathf.Sin(-a) + dir.y * Mathf.Cos(-a)) * l1;
+            knee = (k1.x - hip.x) * fc >= (k2.x - hip.x) * fc ? k1 : k2;
+            foot = hip + dir * d;
         }
 
         /// <summary>Two-bone IK. bendSide picks which side of the shoulder->hand line the elbow sits on.</summary>

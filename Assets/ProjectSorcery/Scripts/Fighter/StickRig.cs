@@ -158,7 +158,7 @@ namespace ProjectSorcery
             Color g = glow.WithA(glowA);
 
             SetPts(legs, 5, S.FootB, S.KneeB, S.Hip, S.KneeF, S.FootF); Col(legs, body);
-            SetPts(torso, 2, S.Hip, S.Neck); Col(torso, body);
+            SetPts(torso, 3, S.Hip, S.SpineMid, S.Neck); Col(torso, body);
             SetPts(arms, 5, S.HandB, S.ElbowB, S.Neck, S.ElbowF, S.HandF); Col(arms, body);
             Circle(head, S.HeadC, 0.25f * f.Size, 20); Col(head, body);
 
@@ -166,7 +166,7 @@ namespace ProjectSorcery
             if (legsGlow.enabled)
             {
                 SetPts(legsGlow, 5, S.FootB, S.KneeB, S.Hip, S.KneeF, S.FootF); Col(legsGlow, g);
-                SetPts(torsoGlow, 2, S.Hip, S.Neck); Col(torsoGlow, g);
+                SetPts(torsoGlow, 3, S.Hip, S.SpineMid, S.Neck); Col(torsoGlow, g);
                 SetPts(armsGlow, 5, S.HandB, S.ElbowB, S.Neck, S.ElbowF, S.HandF); Col(armsGlow, g);
                 Circle(headGlow, S.HeadC, 0.25f * f.Size, 20); Col(headGlow, g);
             }

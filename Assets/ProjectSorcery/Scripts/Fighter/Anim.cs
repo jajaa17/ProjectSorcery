@@ -57,14 +57,15 @@ namespace ProjectSorcery
         public static Clip Strike(string name, Pose antic, Pose contact, Pose follow, Limb smear)
         {
             var a = antic.ToKf(); var c = contact.ToKf(); var f = follow.ToKf();
-            var deep = Kf.Lerp(c, a, 1.12f);
-            var hold = Kf.Lerp(c, f, 0.25f);
+            var deep = Kf.Lerp(c, a, 1.12f);                 // coil a little further back
+            var over = Overshoot(a, c);                        // fly a touch past the target...
+            var hold = Kf.Lerp(c, f, 0.25f);                   // ...then settle onto it
             return new Clip
             {
                 Name = name, Smear = smear,
-                T = new[] { 0f, 0.8f, 1f, 1.85f, 2.55f, 3f },
-                K = new[] { a, deep, c, hold, f, f },
-                E = new[] { Ease.Linear, Ease.InOut, Ease.Snap, Ease.Out, Ease.Out, Ease.Linear },
+                T = new[] { 0f, 0.8f, 1f, 1.2f, 1.85f, 2.55f, 3f },
+                K = new[] { a, deep, c, over, hold, f, f },
+                E = new[] { Ease.InOut, Ease.In, Ease.Snap, Ease.Out, Ease.InOut, Ease.Out, Ease.Out },
             };
         }
 
@@ -73,14 +74,28 @@ namespace ProjectSorcery
         {
             var a = antic.ToKf(); var m = mid.ToKf(); var c = contact.ToKf(); var f = follow.ToKf();
             var deep = Kf.Lerp(m, a, 1.08f);
+            var over = Overshoot(m, c);
             var hold = Kf.Lerp(c, f, 0.25f);
             return new Clip
             {
                 Name = name, Smear = smear,
-                T = new[] { 0f, 0.78f, 0.93f, 1f, 1.85f, 2.55f, 3f },
-                K = new[] { a, deep, m, c, hold, f, f },
-                E = new[] { Ease.Linear, Ease.InOut, Ease.In, Ease.Out, Ease.Out, Ease.Out, Ease.Linear },
+                T = new[] { 0f, 0.78f, 0.93f, 1f, 1.2f, 1.85f, 2.55f, 3f },
+                K = new[] { a, deep, m, c, over, hold, f, f },
+                E = new[] { Ease.InOut, Ease.In, Ease.In, Ease.Snap, Ease.Out, Ease.InOut, Ease.Out, Ease.Out },
             };
+        }
+
+        /// <summary>Contact pushed ~10% further along the strike's own direction (limbs, lean, hip shift).</summary>
+        static Kf Overshoot(in Kf from, in Kf to)
+        {
+            var o = to;
+            o.Lean += (to.Lean - from.Lean) * 0.1f;
+            o.HBx += (to.HBx - from.HBx) * 0.1f; o.HBy += (to.HBy - from.HBy) * 0.1f;
+            o.HFx += (to.HFx - from.HFx) * 0.1f; o.HFy += (to.HFy - from.HFy) * 0.1f;
+            o.ThB += (to.ThB - from.ThB) * 0.08f; o.ShB += (to.ShB - from.ShB) * 0.08f;
+            o.ThF += (to.ThF - from.ThF) * 0.08f; o.ShF += (to.ShF - from.ShF) * 0.08f;
+            o.Wr += (to.Wr - from.Wr) * 0.08f; o.Hx += (to.Hx - from.Hx) * 0.15f;
+            return o;
         }
 
         public Clip With(int twoHand = -2, bool? ghosts = null, float impact = -1f, bool? slam = null, float stiff = -1f)
@@ -256,9 +271,9 @@ namespace ProjectSorcery
 
         // ---- air
         public static readonly Pose Takeoff = P(4, -30, 10, 150, 175, -14, -24, -6, -16, 0, -10, -0.06f);
-        public static readonly Pose Rise = P(10, -50, -10, 140, 120, 25, -55, 78, 8, 0, -4);
-        public static readonly Pose Apex = P(14, -30, 40, 110, 150, 55, -40, 92, -18, 0, 0, -0.05f);
-        public static readonly Pose Fall = P(-4, 115, 150, 125, 160, -8, -32, 30, -4, 0, -8);
+        public static readonly Pose Rise = P(8, -50, -10, 140, 120, -12, -14, 20, 16, 0, -4);
+        public static readonly Pose Apex = P(10, -30, 40, 110, 150, -8, -10, 70, 20, 0, 0, -0.05f);
+        public static readonly Pose Fall = P(-4, 115, 150, 125, 160, -10, -12, 22, 18, 0, -8);
         public static readonly Pose LandSquat = P(24, 40, 100, 60, 120, -50, -105, 66, -26, 0, 10, 0.3f);
 
         // ---- reactions
@@ -268,7 +283,7 @@ namespace ProjectSorcery
         public static readonly Pose Knocked = P(0, 160, 175, 30, 60, -5, -5, 10, 0, -88);
         public static readonly Pose KipCoil = P(0, 160, 200, 165, 200, 120, 160, 140, 170, -70, 0, 0.1f);
         public static readonly Pose Kneel = P(20, 20, 60, 50, 90, -60, -120, 80, -10, 0, 10, 0.32f);
-        public static readonly Pose DashFwd = P(42, -75, -50, -60, -35, -55, -90, 55, 25, 0, 8, 0.06f);
-        public static readonly Pose DashBack = P(-20, 60, 140, 70, 150, -20, -40, 50, 20, 0, -6, 0.06f);
+        public static readonly Pose DashFwd = P(42, -75, -50, -60, -35, -60, -62, 50, 28, 0, 8, 0.02f);
+        public static readonly Pose DashBack = P(-20, 60, 140, 70, 150, -24, -26, 46, 40, 0, -6, 0.02f);
     }
 }

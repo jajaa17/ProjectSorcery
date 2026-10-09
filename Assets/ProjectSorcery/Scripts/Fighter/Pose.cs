@@ -58,9 +58,14 @@ namespace ProjectSorcery
             return p;
         }
 
+        /// <summary>Knees that are only slightly bent snap to a clean, locked-out straight leg.</summary>
+        public const float LockoutDeg = 24f;
+
         public Kf ToKf()
         {
-            var k = new Kf { Lean = Lean, ThB = ThB, ShB = ShB, ThF = ThF, ShF = ShF, Rot = Rot, Head = Head, Drop = Drop, Wr = Wr, Hx = Hx, Tn = Tn };
+            float shB = Mathf.Abs(ThB - ShB) < LockoutDeg ? ThB : ShB;
+            float shF = Mathf.Abs(ThF - ShF) < LockoutDeg ? ThF : ShF;
+            var k = new Kf { Lean = Lean, ThB = ThB, ShB = shB, ThF = ThF, ShF = shF, Rot = Rot, Head = Head, Drop = Drop, Wr = Wr, Hx = Hx, Tn = Tn };
             Kf.ArmFromAngles(UaB, FaB, out k.HBx, out k.HBy, out k.BB);
             Kf.ArmFromAngles(UaF, FaF, out k.HFx, out k.HFy, out k.BF);
             return k;

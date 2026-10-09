@@ -216,16 +216,16 @@ namespace ProjectSorcery
             switch (s)
             {
                 case Stance.Elegant: return P(-2, -12, 12, -8, 18, -10, -12, 12, 2, 0, -4);
-                case Stance.Swordsman: return P(6, 30, 110, 55, 82, -32, -50, 34, -4, 0, -2, 0.08f, 38f);
+                case Stance.Swordsman: return P(6, 30, 110, 55, 82, -30, -32, 32, 26, 0, -2, 0.02f, 38f);
                 case Stance.Brute: return P(6, 15, 50, 25, 60, -26, -30, 28, 0, 0, -2);
-                case Stance.Feral: return P(14, 5, 40, 20, 50, -30, -60, 36, -14, 0, -8, 0.06f);
+                case Stance.Feral: return P(14, 5, 40, 20, 50, -30, -60, 36, -14, 0, -8, 0.05f);
                 case Stance.Caster: return P(0, 10, 60, 60, 112, -16, -22, 18, 0);
-                case Stance.Agile: return P(10, -30, 30, 50, 120, -34, -70, 42, -16, 0, -4, 0.08f);
+                case Stance.Agile: return P(10, -30, 30, 50, 120, -32, -36, 36, 10, 0, -4, 0.04f);
                 case Stance.Floaty: return P(-2, -60, -70, 70, 80, -6, -20, 10, -12);
                 case Stance.Mechanical: return P(0, 20, 90, 30, 90, -14, -14, 14, 0);
-                case Stance.Wrestler: return P(8, 60, 120, 70, 110, -30, -42, 34, -2);
-                case Stance.Martial: return P(2, 40, 150, 70, 100, -26, -38, 30, -2);
-                default: return P(2, 25, 150, 60, 125, -26, -40, 28, 0);
+                case Stance.Wrestler: return P(8, 60, 120, 70, 110, -28, -30, 30, 14);
+                case Stance.Martial: return P(2, 40, 150, 70, 100, -26, -28, 30, 22);
+                default: return P(2, 25, 150, 60, 125, -26, -28, 28, 20);
             }
         }
 
