@@ -381,6 +381,8 @@ static class SimTests
             script.Add(("light string", Seq((IB.Light, 1), (0, 15), (IB.Light, 1), (0, 15), (IB.Light, 1), (0, 17), (IB.Light, 1), (0, 40)), true));
             script.Add(("heavy", Seq((IB.Heavy, 1), (0, 55)), true));
             script.Add(("charged heavy", Seq((IB.Heavy, 46), (0, 55)), true));
+            script.Add(("heavy string", Seq((IB.Heavy, 1), (0, 20), (IB.Heavy, 1), (0, 22), (IB.Heavy, 1), (0, 60)), true));
+            script.Add(("forward heavy", Seq((IB.Right | IB.Heavy, 1), (IB.Right, 4), (0, 50)), true));
             script.Add(("launcher", Seq((IB.Down | IB.Heavy, 1), (IB.Down, 6), (0, 50)), true));
             script.Add(("sweep", Seq((IB.Down | IB.Light, 1), (IB.Down, 6), (0, 40)), true));
             script.Add(("dash strike", Seq((IB.Right | IB.Dash, 1), (IB.Right, 4), (IB.Light, 1), (0, 50)), false));

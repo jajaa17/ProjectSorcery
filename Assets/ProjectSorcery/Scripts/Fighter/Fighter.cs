@@ -40,6 +40,8 @@ namespace ProjectSorcery
         public InputFrame In;
         public AttackDef CurAttack;
         public int ComboStep, AirStep;
+        float lastAttackEnd = -9f;
+        const float ComboWindow = 0.45f;   // time after a light ends that the next press still continues the string
         public float Hitstun, Hitstop, Invuln, BurstCd, DashCd, KnockdownTime;
         readonly List<Fighter> hitThisAttack = new List<Fighter>(4);
         readonly List<Minion> minionsHitThisAttack = new List<Minion>(4);
@@ -47,7 +49,9 @@ namespace ProjectSorcery
 
         // input buffer
         enum Act { None, Light, Heavy, Jump, Dash, S1, S2, S3, Ult }
-        Act buffered; float bufferTime; bool bufferedDown;
+        Act buffered; float bufferTime; bool bufferedDown, bufferedFwd;
+        public int HeavyStep;
+        bool pendingStep;
 
         // ---------- abilities ----------
         public MoveSet Set;                // normal attacks (style + personal flavour)
@@ -265,7 +269,7 @@ namespace ProjectSorcery
             else if (In.Pressed(IB.Jump)) a = Act.Jump;
             if (a != Act.None)
             {
-                buffered = a; bufferTime = 0.16f; bufferedDown = In.Down;
+                buffered = a; bufferTime = 0.16f; bufferedDown = In.Down; bufferedFwd = In.X * TowardTarget > 0.5f;
                 if (a == Act.Heavy && M.Time >= bfOpen && M.Time <= bfClose) bfPrimed = true;
             }
             else if (bufferTime > 0f && decay)
@@ -274,6 +278,9 @@ namespace ProjectSorcery
                 if (bufferTime <= 0f) buffered = Act.None;
             }
         }
+
+        /// <summary>+1/-1 toward the nearest enemy (falls back to facing): what "forward" means for command inputs.</summary>
+        int TowardTarget { get { var t = Target; return t != null && Mathf.Abs(t.Pos.x - Pos.x) > 0.05f ? (t.Pos.x > Pos.x ? 1 : -1) : Facing; } }
 
         Act Consume()
         {
@@ -386,6 +393,8 @@ namespace ProjectSorcery
             else if (bufferedDown || In.Down) { a = Set.Sweep; ComboStep = 0; }
             else
             {
+                // the string keeps going as long as presses keep coming (hit or whiff); a pause resets it
+                if (State != FState.Attack && M.Time - lastAttackEnd > ComboWindow) ComboStep = 0;
                 a = Set.Light[Mathf.Clamp(ComboStep, 0, Set.Light.Length - 1)];
                 ComboStep = (ComboStep + 1) % Set.Light.Length;
             }
@@ -395,8 +404,19 @@ namespace ProjectSorcery
         void StartHeavy(bool grounded)
         {
             AttackDef a;
-            if (!grounded) a = (bufferedDown || In.Down) ? Set.Dive : Set.AirHeavy;
-            else a = (bufferedDown || In.Down) ? Set.Launcher : Set.Heavy;
+            bool down = bufferedDown || In.Down;
+            bool chaining = (State == FState.Attack && HeavyStep > 0 && CurAttack != null && System.Array.IndexOf(Set.HeavyChain, CurAttack) >= 0)
+                            || (State != FState.Attack && HeavyStep > 0 && M.Time - lastAttackEnd <= ComboWindow);
+            if (!grounded) a = down ? Set.Dive : Set.AirHeavy;                       // aerial move list
+            else if (down) a = Set.Launcher;                                         // Down + Heavy
+            else if (bufferedFwd && !chaining) a = Set.Dash;                         // Forward + Heavy: lunging strike
+            else
+            {
+                // Heavy -> Heavy -> Heavy: each swing's momentum winds the body into a bigger, spinning follow-up
+                if (!chaining) HeavyStep = 0;
+                a = Set.HeavyChain[Mathf.Clamp(HeavyStep, 0, Set.HeavyChain.Length - 1)];
+                HeavyStep = (HeavyStep + 1) % Set.HeavyChain.Length;
+            }
             ComboStep = 0;
             StartAttack(a);
         }
@@ -411,7 +431,9 @@ namespace ProjectSorcery
             SetState(FState.Attack);
             FaceTarget();
             float lungeMul = Def.Speed;
-            if (a.Lunge.x != 0f) Vel.x = a.Lunge.x * Facing * lungeMul;
+            // ground strikes step in ON the strike: a small shuffle now, the real drive late in the wind-up
+            pendingStep = !a.Air && !a.DashStrike && Grounded && a.Lunge.x != 0f;
+            if (a.Lunge.x != 0f) Vel.x = a.Lunge.x * Facing * lungeMul * (pendingStep ? 0.3f : 1f);
             if (a.Lunge.y != 0f) Vel.y = a.Lunge.y;
             if (!a.Air && Grounded && a.Lunge.x == 0f) Vel.x *= 0.3f;
             Audio.Play((a.Flags & HitFlags.Heavy) != 0 ? Sfx.Whoosh : Sfx.WhooshLight, Center, 0.45f, 0.9f + 0.05f * ComboStep);
@@ -422,7 +444,14 @@ namespace ProjectSorcery
             var a = CurAttack;
             if (a == null) { SetState(Grounded ? FState.Idle : FState.Air); return; }
             float t = StateTime;
-            if (Grounded && !a.Air) Vel.x = Mathf.MoveTowards(Vel.x, 0f, 28f * dt);
+            if (pendingStep && t >= a.Startup * 0.62f && ChargeTime <= 0f) { pendingStep = false; Vel.x = a.Lunge.x * Facing * Def.Speed; }
+            if (Grounded && !a.Air && !pendingStep) Vel.x = Mathf.MoveTowards(Vel.x, 0f, 28f * dt);
+            // air heavy: hang in the air through the wind-up, then plunge with the strike
+            if (a.Air && (a.Flags & HitFlags.Heavy) != 0 && (a.Flags & HitFlags.Spike) == 0 && !Grounded)
+            {
+                if (t < a.Startup) { Vel.y = Mathf.MoveTowards(Vel.y, 0.8f, 90f * dt); Vel.x *= 1f - 4f * dt; }
+                else if (t - dt < a.Startup) Vel.y = -13f;
+            }
 
             // hold Heavy to charge: the wind-up freezes, cursed energy gathers; a full charge bursts out as an aura blast
             if (a.Chargeable && !chargeReleased && t >= a.Startup * 0.8f)
@@ -450,7 +479,13 @@ namespace ProjectSorcery
             }
 
             bool recovering = t >= a.Startup + a.Active;
-            // cancel windows: after a connected hit, chain into anything
+            // whiffed lights still flow into the next hit of the string, just a little later than on hit
+            if (recovering && !attackConnected && buffered == Act.Light && !a.Air && (a.Flags & HitFlags.Light) != 0
+                && t >= a.Startup + a.Active + a.Recovery * 0.55f)
+            {
+                if (TryBuffered(Grounded)) return;
+            }
+            // cancel windows: after a connected hit, chain into anything (never during the active frames)
             if (recovering && attackConnected && buffered != Act.None)
             {
                 bool launchCancel = (a.Flags & HitFlags.Launch) != 0 && buffered == Act.Jump;
@@ -463,7 +498,7 @@ namespace ProjectSorcery
             if (t >= a.Total * Mathf.Lerp(1f, 0.85f, Def.Speed - 1f))
             {
                 CurAttack = null;
-                if (!attackConnected) ComboStep = 0;
+                lastAttackEnd = M.Time;
                 SetState(Grounded ? FState.Idle : FState.Air);
                 TryBuffered(Grounded);
             }
@@ -995,6 +1030,7 @@ namespace ProjectSorcery
             float g = 42f;
             if (State == FState.Hitstun) g *= 0.82f;
             if (State == FState.Cast) g *= 0.35f;
+            if (State == FState.Attack && CurAttack != null && CurAttack.Air && (CurAttack.Flags & HitFlags.Heavy) == 0) g *= 0.5f;   // air strings hang
             if (strike != null && !strike.Gravity) g = 0f;
             if (State == FState.Dash && !Grounded) g = 0f;
             if (Has(StatusType.Gravity)) g *= 1.8f;

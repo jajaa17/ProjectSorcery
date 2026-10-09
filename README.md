@@ -108,6 +108,9 @@ The alternate keys in brackets are for solo play. They switch off automatically 
 **Universal techniques**
 - `Down + Light` sweep, `Down + Heavy` launcher
 - **Hold Heavy** to charge a smash; a full charge bursts out as an aura blast that breaks guards
+- **Light, Light, Light, Light**: every style has a four-hit string (e.g. jab, cross, heavy hook, roundhouse). Keep pressing, even on a whiff, and it flows into the next hit
+- **Heavy, Heavy, Heavy**: each heavy spins the body into a bigger follow-up; the third launches
+- **Forward + Heavy**: lunging strike. **Down + Heavy**: launcher. In the air, **Heavy** hangs for a beat then slams down
 - **Attack out of a forward dash** for a dash strike
 - **Black Flash**: land a light hit, then press Heavy *in rhythm*. Nail the window for a critical hit with a 2.5× distortion. It's rare: after one lands, the spark needs a few seconds to return (less while you're in the zone).
 - **Hold Block + Down**: Reverse Cursed Technique (heal, if your fighter has it). Inside an enemy domain this becomes **Simple Domain** and reduces the sure-hit.

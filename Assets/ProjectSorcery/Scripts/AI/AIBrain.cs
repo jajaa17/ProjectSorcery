@@ -416,6 +416,14 @@ namespace ProjectSorcery
                 return;
             }
 
+            // heavy strings: keep swinging while the heavies land
+            int hs = System.Array.IndexOf(f.Set.HeavyChain, a);
+            if (hs >= 0 && hs < f.Set.HeavyChain.Length - 1 && f.Grounded)
+            {
+                if (M.Rng.Chance(0.25f + 0.5f * P.ComboSkill)) Press(IB.Heavy);
+                return;
+            }
+
             int maxLights = P.ComboSkill < 0.3f ? 2 : P.ComboSkill < 0.7f ? 3 : 4;
             if (!f.Grounded)
             {

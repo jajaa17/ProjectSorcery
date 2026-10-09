@@ -11,6 +11,7 @@ namespace ProjectSorcery
         public MoveStyle Style;
         public AttackDef[] Light;
         public AttackDef Heavy, Launcher, Sweep, Dash;
+        public AttackDef[] HeavyChain;   // Heavy -> Heavy -> Heavy
         public AttackDef[] Air;
         public AttackDef AirHeavy, Dive;
         public bool TwoHand;           // weapon held with both hands by default
@@ -49,10 +50,25 @@ namespace ProjectSorcery
             => Pose.P(lean, uaB, faB, uaF, faF, thB, shB, thF, shF, rot, head, drop, wr, hx, tn);
 
         static Clip S(string n, Pose a, Pose c, Pose f, Limb l) => Clip.Strike(n, a, c, f, l);
+
+        /// <summary>A bigger copy of a strike whose wind-up spins the body `turns` times into the contact.</summary>
+        static Clip Spin(Clip src, float turns, float scale, float impact, bool slam)
+        {
+            var c = new Clip { Name = src.Name + (turns > 1.5f ? "III" : "II"), T = src.T, E = src.E, Smear = src.Smear, TwoHand = src.TwoHand, Ghosts = true, Impact = impact, GroundSlam = slam || src.GroundSlam, Stiff = src.Stiff, Aura = src.Aura, K = new Kf[src.K.Length] };
+            for (int i = 0; i < src.K.Length; i++)
+            {
+                var k = src.K[i];
+                float u = Mathf.Clamp01(src.T[i]);
+                k.Tn += turns * u * u * (3f - 2f * u);   // the spin winds up and completes exactly at contact
+                k.Lean *= scale; k.Hx *= scale + 0.15f; k.Drop += 0.05f * scale;
+                c.K[i] = k;
+            }
+            return c;
+        }
         static Clip A(string n, Pose a, Pose m, Pose c, Pose f, Limb l) => Clip.Arc(n, a, m, c, f, l);
 
         // ------------------------------------------------------------------ gameplay templates
-        enum Slot { L1, L2, L3, L4, Heavy, Launch, Sweep, Dash, Air1, Air2, AirHeavy, Dive }
+        enum Slot { L1, L2, L3, L4, Heavy, Heavy2, Heavy3, Launch, Sweep, Dash, Air1, Air2, AirHeavy, Dive }
 
         struct StyleStats { public float Speed, Damage, Reach, Radius; }
 
@@ -79,17 +95,19 @@ namespace ProjectSorcery
             AttackDef a;
             switch (slot)
             {
-                case Slot.L1: a = new AttackDef { Startup = 0.075f, Active = 0.06f, Recovery = 0.13f, Damage = 26f, Knockback = new Vector2(1.6f, 0.3f), Hitstun = 0.34f, Lunge = new Vector2(3.5f, 0f) }; break;
-                case Slot.L2: a = new AttackDef { Startup = 0.08f, Active = 0.06f, Recovery = 0.14f, Damage = 28f, Knockback = new Vector2(1.9f, 0.3f), Hitstun = 0.36f, Lunge = new Vector2(3.5f, 0f) }; break;
-                case Slot.L3: a = new AttackDef { Startup = 0.09f, Active = 0.07f, Recovery = 0.16f, Damage = 31f, Knockback = new Vector2(2.2f, 1f), Hitstun = 0.38f, Lunge = new Vector2(4f, 0f) }; break;
-                case Slot.L4: a = new AttackDef { Startup = 0.13f, Active = 0.08f, Recovery = 0.27f, Damage = 46f, Knockback = new Vector2(7.5f, 4f), Hitstun = 0.5f, Hitstop = 0.09f, Offset = new Vector2(0.95f, 1.15f), Radius = 0.62f, Lunge = new Vector2(5f, 0f) }; break;
-                case Slot.Heavy: a = new AttackDef { Startup = 0.24f, Active = 0.09f, Recovery = 0.32f, Damage = 72f, Knockback = new Vector2(10.5f, 4.5f), Hitstun = 0.62f, Hitstop = 0.13f, Flags = HitFlags.Heavy, Offset = new Vector2(0.92f, 1.3f), Radius = 0.66f, Lunge = new Vector2(7f, 0f), CeGain = 6f, Chargeable = true }; break;
+                case Slot.L1: a = new AttackDef { Startup = 0.075f, Active = 0.06f, Recovery = 0.13f, Damage = 26f, Knockback = new Vector2(1.6f, 0.3f), Hitstun = 0.34f, Hitstop = 0.045f, Lunge = new Vector2(3.5f, 0f) }; break;
+                case Slot.L2: a = new AttackDef { Startup = 0.08f, Active = 0.06f, Recovery = 0.14f, Damage = 28f, Knockback = new Vector2(1.9f, 0.3f), Hitstun = 0.36f, Hitstop = 0.06f, Lunge = new Vector2(3.5f, 0f) }; break;
+                case Slot.L3: a = new AttackDef { Startup = 0.09f, Active = 0.07f, Recovery = 0.16f, Damage = 31f, Knockback = new Vector2(2.6f, 1f), Hitstun = 0.4f, Hitstop = 0.085f, Lunge = new Vector2(4f, 0f) }; break;
+                case Slot.L4: a = new AttackDef { Startup = 0.13f, Active = 0.08f, Recovery = 0.27f, Damage = 46f, Knockback = new Vector2(7.5f, 4f), Hitstun = 0.5f, Hitstop = 0.11f, Offset = new Vector2(0.95f, 1.15f), Radius = 0.62f, Lunge = new Vector2(5f, 0f) }; break;
+                case Slot.Heavy: a = new AttackDef { Startup = 0.24f, Active = 0.09f, Recovery = 0.32f, Damage = 72f, Knockback = new Vector2(6.5f, 3.5f), Hitstun = 0.66f, Hitstop = 0.13f, Flags = HitFlags.Heavy, Offset = new Vector2(0.92f, 1.3f), Radius = 0.66f, Lunge = new Vector2(7f, 0f), CeGain = 6f, Chargeable = true }; break;
+                case Slot.Heavy2: a = new AttackDef { Startup = 0.26f, Active = 0.09f, Recovery = 0.34f, Damage = 70f, Knockback = new Vector2(6f, 3.5f), Hitstun = 0.7f, Hitstop = 0.14f, Flags = HitFlags.Heavy, Offset = new Vector2(0.92f, 1.25f), Radius = 0.72f, Lunge = new Vector2(6f, 0f), CeGain = 6f }; break;
+                case Slot.Heavy3: a = new AttackDef { Startup = 0.3f, Active = 0.1f, Recovery = 0.42f, Damage = 88f, Knockback = new Vector2(13f, 6.5f), Hitstun = 0.8f, Hitstop = 0.17f, Flags = HitFlags.Heavy, Offset = new Vector2(0.95f, 1.2f), Radius = 0.78f, Lunge = new Vector2(8f, 0f), CeGain = 8f }; break;
                 case Slot.Launch: a = new AttackDef { Startup = 0.15f, Active = 0.09f, Recovery = 0.3f, Damage = 55f, Knockback = new Vector2(1.4f, 15.5f), Hitstun = 0.75f, Hitstop = 0.1f, Flags = HitFlags.Heavy | HitFlags.Launch, Offset = new Vector2(0.7f, 1.7f), Radius = 0.62f, Lunge = new Vector2(3f, 0f), CeGain = 6f }; break;
                 case Slot.Sweep: a = new AttackDef { Startup = 0.11f, Active = 0.08f, Recovery = 0.26f, Damage = 34f, Knockback = new Vector2(2f, 5.5f), Hitstun = 0.55f, Offset = new Vector2(1f, 0.3f), Radius = 0.6f, Lunge = new Vector2(4f, 0f) }; break;
                 case Slot.Dash: a = new AttackDef { Startup = 0.1f, Active = 0.1f, Recovery = 0.28f, Damage = 44f, Knockback = new Vector2(8f, 3f), Hitstun = 0.5f, Hitstop = 0.09f, Offset = new Vector2(0.9f, 1.2f), Radius = 0.66f, Lunge = new Vector2(11f, 0f), DashStrike = true }; break;
                 case Slot.Air1: a = new AttackDef { Startup = 0.06f, Active = 0.08f, Recovery = 0.12f, Damage = 24f, Knockback = new Vector2(2f, 3.2f), Hitstun = 0.4f, Air = true, Lunge = Vector2.zero, Offset = new Vector2(0.8f, 0.9f) }; break;
                 case Slot.Air2: a = new AttackDef { Startup = 0.07f, Active = 0.08f, Recovery = 0.14f, Damage = 28f, Knockback = new Vector2(2.4f, 3.4f), Hitstun = 0.42f, Air = true, Lunge = Vector2.zero }; break;
-                case Slot.AirHeavy: a = new AttackDef { Startup = 0.14f, Active = 0.08f, Recovery = 0.22f, Damage = 55f, Knockback = new Vector2(9f, 2f), Hitstun = 0.55f, Hitstop = 0.11f, Flags = HitFlags.Heavy, Air = true, Lunge = new Vector2(2f, 0f), CeGain = 5f }; break;
+                case Slot.AirHeavy: a = new AttackDef { Startup = 0.16f, Active = 0.1f, Recovery = 0.22f, Damage = 55f, Knockback = new Vector2(7f, -9f), Hitstun = 0.55f, Hitstop = 0.12f, Flags = HitFlags.Heavy, Air = true, Lunge = new Vector2(2f, 0f), CeGain = 5f }; break;
                 default: a = new AttackDef { Startup = 0.1f, Active = 0.12f, Recovery = 0.2f, Damage = 50f, Knockback = new Vector2(3f, -16f), Hitstun = 0.6f, Hitstop = 0.11f, Flags = HitFlags.Heavy | HitFlags.Spike, Air = true, Offset = new Vector2(0.5f, 0.2f), Radius = 0.7f, Lunge = new Vector2(4f, -10f), CeGain = 5f }; break;
             }
             a.Name = name;
@@ -174,7 +192,8 @@ namespace ProjectSorcery
                 last.Clip = FlavorClip(alt, idle, exag, southpaw);
                 set.Light[set.Light.Length - 1] = last;
             }
-            set.Heavy = F(b.Heavy); set.Launcher = F(b.Launcher); set.Sweep = F(b.Sweep); set.Dash = F(b.Dash);
+            set.Heavy = F(b.Heavy); set.Launcher = F(b.Launcher);
+            set.HeavyChain = new[] { set.Heavy, F(b.HeavyChain[1]), F(b.HeavyChain[2]) }; set.Sweep = F(b.Sweep); set.Dash = F(b.Dash);
             set.Air = new[] { F(b.Air[0]), F(b.Air[1]) };
             set.AirHeavy = F(b.AirHeavy); set.Dive = F(b.Dive);
             perFighter[d.Id] = set;
@@ -250,6 +269,13 @@ namespace ProjectSorcery
                 default: set = BrawlerSet(); break;
             }
             set.Style = s;
+            // heavy string: the second swing spins the whole body into a bigger wind-up, the third spins twice
+            set.HeavyChain = new[]
+            {
+                set.Heavy,
+                Make(Slot.Heavy2, set.Heavy.Name + " II", Spin(set.Heavy.Clip, 1f, 1.12f, 1.35f, false), s),
+                Make(Slot.Heavy3, set.Heavy.Name + " III", Spin(set.Heavy.Clip, 2f, 1.25f, 1.9f, true), s),
+            };
             bases[s] = set;
             return set;
         }
@@ -275,7 +301,7 @@ namespace ProjectSorcery
             {
                 Make(Slot.L1, "Jab", S("Jab", P(-2, 25, 150, 40, 150, -28, -46, 30, 4, 0, 0, 0.04f), P(16, 25, 150, 92, 90, -38, -42, 42, 4, 0, 0, 0.08f, 0, 0.14f), P(18, 25, 150, 95, 88, -40, -44, 44, 4, 0, 0, 0.09f, 0, 0.16f), Limb.HandF), s),
                 Make(Slot.L2, "Cross", S("Cross", P(-10, -40, 150, 70, 110, -30, -62, 34, 24, 0, 0, 0.06f, 0, -0.06f), P(26, 94, 91, 25, 150, -52, -54, 52, 6, 0, 4, 0.16f, 0, 0.22f), P(30, 98, 96, 20, 140, -54, -56, 54, 8, 0, 4, 0.18f, 0, 0.26f), Limb.HandB), s),
-                Make(Slot.L3, "Body Hook", S("Hook", P(8, 22, 130, -25, 80, -24, -40, 28, -4, 0, 0, 0.06f), P(26, 30, 140, 72, 118, -36, -56, 38, 0, 0, 0, 0.1f, 0, 0.1f), P(30, 30, 140, 50, 140, -36, -56, 38, 0, 0, 0, 0.1f), Limb.HandF), s, Body),
+                Make(Slot.L3, "Heavy Hook", S("Hook", P(2, 94, 100, -30, 70, -34, -48, 30, 20, 0, 4, 0.08f, 0, -0.04f, 0.03f), P(28, -20, 140, 76, 122, -50, -52, 50, 4, 0, 6, 0.22f, 0, 0.16f, 0.1f), P(36, -40, 130, 30, 165, -50, -52, 52, 4, 0, 8, 0.24f, 0, 0.2f, 0.14f), Limb.HandF).With(impact: 1.35f), s, Body),
                 Make(Slot.L4, "Roundhouse", S("Roundhouse", P(-6, 30, 140, 40, 150, -14, -22, 72, -24, 0, 0, 0.02f), P(-26, 55, 150, -35, -5, -6, -10, 104, 100, 0, -6, 0, 0, 0.08f), P(-14, 45, 145, -10, 30, -10, -14, 70, 20), Limb.FootF).With(impact: 1.2f), s, KickHigh),
             };
             AltFinisher[s] = S("Spinning Backfist", P(6, 22, 118, 42, 142, -22, -36, 26, -2, 0, 0, 0.05f, 0, 0, 0.06f), P(14, -96, -88, 40, 140, -30, -42, 32, 0, 0, 0, 0, 0, 0.12f, 0.5f), P(8, 20, 110, 45, 140, -26, -38, 28, 0, 0, 0, 0, 0, 0, 1f), Limb.HandB);

@@ -33,7 +33,7 @@ namespace ProjectSorcery
             if (Def.Has(Passive.Infinity) && Ce > MaxCe * 0.2f && !sure && !h.Has(HitFlags.PierceInfinity) && !h.Has(HitFlags.Soul)
                 && !atkPierces && !focusLost)
             {
-                Ce = Mathf.Max(0f, Ce - (h.Has(HitFlags.Heavy) ? 15f : 8f));
+                Ce = Mathf.Max(0f, Ce - (h.Has(HitFlags.Heavy) ? 18f : 10f));
                 if (atk != null)
                 {
                     atk.InfinityHitsTaken++;
