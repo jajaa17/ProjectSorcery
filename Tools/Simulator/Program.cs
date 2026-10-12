@@ -378,11 +378,14 @@ static class SimTests
             // script: (label, ticks, bits per tick); presses are single-tick edges
             var script = new List<(string label, ushort[] seq, bool place)>();
             ushort[] Hold(ushort b, int n) { var a = new ushort[n]; for (int i = 0; i < n; i++) a[i] = b; return a; }
+            ushort[] Route(string keys) { var l = new List<ushort>(); foreach (char k in keys) { l.Add(k == 'H' ? IB.Heavy : IB.Light); l.AddRange(Hold(0, k == 'H' ? 30 : 15)); } l.AddRange(Hold(0, 80)); return l.ToArray(); }
             ushort[] Mash(int presses, int every, int tail) { var l = new List<ushort>(); for (int i = 0; i < presses; i++) { l.Add(IB.Light); l.AddRange(Hold(0, every - 1)); } l.AddRange(Hold(0, tail)); return l.ToArray(); }
             ushort[] Seq(params (ushort b, int n)[] parts) { var l = new List<ushort>(); foreach (var p in parts) l.AddRange(Hold(p.b, p.n)); return l.ToArray(); }
             script.Add(("idle", Hold(0, 50), true));
             script.Add(("walk", Seq((IB.Left, 40), (0, 8), (IB.Right, 45), (0, 20)), false));
             script.Add(("mash auto-combo", Mash(14, 7, 90), true));
+            foreach (var r in new[] { "LH", "LLLH", "LHLL", "HLLL", "HHL", "LHH" })
+                script.Add(("route " + r, Route(r + "L"), true));   // trailing press = mash for the ender
             script.Add(("light string", Seq((IB.Light, 1), (0, 15), (IB.Light, 1), (0, 15), (IB.Light, 1), (0, 17), (IB.Light, 1), (0, 40)), true));
             script.Add(("heavy", Seq((IB.Heavy, 1), (0, 55)), true));
             script.Add(("charged heavy", Seq((IB.Heavy, 46), (0, 55)), true));

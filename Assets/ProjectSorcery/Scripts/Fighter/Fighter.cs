@@ -39,8 +39,9 @@ namespace ProjectSorcery
         public float StateTime;
         public InputFrame In;
         public AttackDef CurAttack;
-        public int ComboStep, AirStep;
-        int stringHits;          // lights landed in the current auto-combo
+        public int AirStep;
+        string route = "";       // buttons pressed in the current combo ("LLH"); see MoveLib.BuildRoutes
+        int routeHits;           // hits landed in the current route
         bool finisherLanded;     // the auto-combo's last hit connected: keep mashing for the signature ender
         float stepSpeed;         // the drive of this strike's step-in (chases the target inside a connected string)
         float lastAttackEnd = -9f;
@@ -53,7 +54,6 @@ namespace ProjectSorcery
         // input buffer
         enum Act { None, Light, Heavy, Jump, Dash, S1, S2, S3, Ult }
         Act buffered; float bufferTime; bool bufferedDown, bufferedFwd;
-        public int HeavyStep;
         bool pendingStep;
 
         // ---------- abilities ----------
@@ -275,8 +275,10 @@ namespace ProjectSorcery
                 buffered = a; bufferTime = 0.16f; bufferedDown = In.Down; bufferedFwd = In.X * TowardTarget > 0.5f;
                 if (a == Act.Heavy && M.Time >= bfOpen && M.Time <= bfClose) bfPrimed = true;
             }
-            else if (bufferTime > 0f && decay)
+            else if (bufferTime > 0f && decay && State != FState.Attack)
             {
+                // a press made during an attack is held until that attack can chain (cancel window or its end),
+                // so slow heavies never eat the next button of a route
                 bufferTime -= M.Dt;
                 if (bufferTime <= 0f) buffered = Act.None;
             }
@@ -393,35 +395,33 @@ namespace ProjectSorcery
                 a = Set.Air[Mathf.Clamp(AirStep, 0, Set.Air.Length - 1)];
                 AirStep = (AirStep + 1) % Set.Air.Length;
             }
-            else if (bufferedDown || In.Down) { a = Set.Sweep; ComboStep = 0; }
-            else
-            {
-                // the string keeps going as long as presses keep coming (hit or whiff); a pause resets it
-                if (State != FState.Attack && M.Time - lastAttackEnd > ComboWindow) ComboStep = 0;
-                if (ComboStep == 0) stringHits = 0;
-                a = Set.Light[Mathf.Clamp(ComboStep, 0, Set.Light.Length - 1)];
-                ComboStep = (ComboStep + 1) % Set.Light.Length;
-            }
+            else if (bufferedDown || In.Down) { a = Set.Sweep; route = ""; }
+            else a = NextInRoute('L');
             StartAttack(a);
+        }
+
+        /// <summary>
+        /// Combo routes: Light/Heavy presses chained inside the combo window extend the route ("L" -> "LL" -> "LLH"),
+        /// and the route picks the move. An unknown route (or a pause) starts a new one from this button.
+        /// </summary>
+        AttackDef NextInRoute(char key)
+        {
+            bool chaining = route.Length > 0 && (State == FState.Attack || M.Time - lastAttackEnd <= ComboWindow);
+            if (!chaining) { route = ""; routeHits = 0; }
+            if (Set.Routes.TryGetValue(route + key, out var a)) { route += key; return a; }
+            route = key.ToString(); routeHits = 0;
+            return Set.Routes[route];
         }
 
         void StartHeavy(bool grounded)
         {
             AttackDef a;
             bool down = bufferedDown || In.Down;
-            bool chaining = (State == FState.Attack && HeavyStep > 0 && CurAttack != null && System.Array.IndexOf(Set.HeavyChain, CurAttack) >= 0)
-                            || (State != FState.Attack && HeavyStep > 0 && M.Time - lastAttackEnd <= ComboWindow);
-            if (!grounded) a = down ? Set.Dive : Set.AirHeavy;                       // aerial move list
-            else if (down) a = Set.Launcher;                                         // Down + Heavy
-            else if (bufferedFwd && !chaining) a = Set.Dash;                         // Forward + Heavy: lunging strike
-            else
-            {
-                // Heavy -> Heavy -> Heavy: three planted blows, each heavier than the last (the third sits down into a slam)
-                if (!chaining) HeavyStep = 0;
-                a = Set.HeavyChain[Mathf.Clamp(HeavyStep, 0, Set.HeavyChain.Length - 1)];
-                HeavyStep = (HeavyStep + 1) % Set.HeavyChain.Length;
-            }
-            ComboStep = 0;
+            bool chaining = route.Length > 0 && (State == FState.Attack || M.Time - lastAttackEnd <= ComboWindow);
+            if (!grounded) { a = down ? Set.Dive : Set.AirHeavy; route = ""; }      // aerial move list
+            else if (down) { a = Set.Launcher; route = ""; }                         // Down + Heavy
+            else if (bufferedFwd && !chaining) { a = Set.Dash; route = ""; }         // Forward + Heavy: lunging strike
+            else a = NextInRoute('H');                                               // Heavy inside a combo route
             StartAttack(a);
         }
 
@@ -442,7 +442,7 @@ namespace ProjectSorcery
             stepSpeed = a.Lunge.x * lungeMul;
             // momentum through a string: once the combo has connected, each follow-up drives in far enough to land,
             // so a mashed auto-combo carries the fight forward instead of whiffing as the opponent is knocked back
-            bool continuing = (stringHits > 0 && System.Array.IndexOf(Set.Light, a) > 0) || System.Array.IndexOf(Set.HeavyChain, a) > 0;
+            bool continuing = route.Length > 1 && routeHits > 0;
             var tgt = Target;
             if (pendingStep && continuing && tgt != null)
             {
@@ -455,7 +455,7 @@ namespace ProjectSorcery
             if (a.Lunge.x != 0f) Vel.x = a.Lunge.x * Facing * lungeMul * (pendingStep ? 0.3f : 1f);
             if (a.Lunge.y != 0f) Vel.y = a.Lunge.y;
             if (!a.Air && Grounded && a.Lunge.x == 0f) Vel.x *= 0.3f;
-            Audio.Play((a.Flags & HitFlags.Heavy) != 0 ? Sfx.Whoosh : Sfx.WhooshLight, Center, 0.45f, 0.9f + 0.05f * ComboStep);
+            Audio.Play((a.Flags & HitFlags.Heavy) != 0 ? Sfx.Whoosh : Sfx.WhooshLight, Center, 0.45f, 0.9f + 0.05f * route.Length);
         }
 
         void TickAttack(float dt)
@@ -505,8 +505,8 @@ namespace ProjectSorcery
             {
                 if (TryBuffered(Grounded)) return;
             }
-            // auto-combo ender: still mashing Light after the finisher lands -> the fighter's own signature technique
-            if (recovering && finisherLanded && buffered == Act.Light)
+            // auto-combo ender: still mashing after a route finisher lands -> the fighter's own signature technique
+            if (recovering && finisherLanded && (buffered == Act.Light || buffered == Act.Heavy))
             {
                 int ender = AutoComboEnder();
                 if (ender >= 0) { Consume(); if (TryCast(ender)) return; }
@@ -595,7 +595,7 @@ namespace ProjectSorcery
             if (M.Domains.OwnerEffect(this) == SureHit.SoulStrike) h.Flags |= HitFlags.PierceInfinity | HitFlags.Soul;
             if (Def.Has(Passive.RotBlood)) h = h.WithStatus(StatusType.Rot, 3f, 6f);
             // auto-combo finisher: mash Light and, if the earlier hits landed, the last one hangs longer on contact
-            bool finisher = Set.Light.Length >= 3 && a == Set.Light[Set.Light.Length - 1] && stringHits >= 2;
+            bool finisher = a.Finisher && route.Length >= 3 && routeHits >= 2;
             if (finisher) h.Hitstop *= 1.4f;
 
             // ---- BLACK FLASH ----
@@ -641,7 +641,7 @@ namespace ProjectSorcery
             }
             if (res == HitResult.Hit)
             {
-                if ((a.Flags & HitFlags.Light) != 0) stringHits++;
+                if (route.Length > 0) routeHits++;
                 if (finisher) finisherLanded = true;
                 if (finisher && !blackFlash)
                 {
@@ -749,7 +749,7 @@ namespace ProjectSorcery
             {
                 // attack out of a forward dash: the dash strike carries all that momentum
                 Consume();
-                ComboStep = 0;
+                route = "";
                 StartAttack(Set.Dash);
             }
             else if (buffered == Act.Light || buffered == Act.Heavy || buffered >= Act.S1)

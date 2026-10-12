@@ -12,6 +12,11 @@ namespace ProjectSorcery
         public AttackDef[] Light;
         public AttackDef Heavy, Launcher, Sweep, Dash;
         public AttackDef[] HeavyChain;   // Heavy -> Heavy -> Heavy
+        /// <summary>
+        /// Combo routes: the button sequence of the current combo ("L", "LLH", "HL"...) mapped to the move it plays.
+        /// Built per fighter from their own moves, so every character's routes look and hit differently.
+        /// </summary>
+        public Dictionary<string, AttackDef> Routes;
         public AttackDef[] Air;
         public AttackDef AirHeavy, Dive;
         public bool TwoHand;           // weapon held with both hands by default
@@ -241,8 +246,54 @@ namespace ProjectSorcery
             set.HeavyChain = new[] { set.Heavy, F(b.HeavyChain[1]), F(b.HeavyChain[2]) }; set.Sweep = F(b.Sweep); set.Dash = F(b.Dash);
             set.Air = new[] { F(b.Air[0]), F(b.Air[1]) };
             set.AirHeavy = F(b.AirHeavy); set.Dive = F(b.Dive);
+            BuildRoutes(set);
             perFighter[d.Id] = set;
             return set;
+        }
+
+        // ------------------------------------------------------------------ combo routes
+        // Any mix of Light and Heavy chains into something. Lights walk the fighter's string, heavies walk the heavy
+        // string, and switching buttons branches:
+        //   L  LL  LLL  LLLL*         the light string (* = finisher)
+        //   H  HH  HHH*               the heavy string: three planted blows, the third sits down into a slam
+        //   LH                        power shot: the second light thrown as a full heavy
+        //   LLH                       launcher (jump to follow up in the air)
+        //   LLLH*                     breaker: the light finisher thrown as a heavy slam
+        //   LHL  HL                   pursuit: a lunging chase strike after the heavy knocks them back
+        //   LHH* HLH* LHLH*           cut into the heavy slam
+        //   HLL  HLLL*  LHLL*         back into the light string
+        //   HHL*                      low sweep knockdown
+        // Each move is built from the fighter's own choreography, so the same route looks different on every character.
+        // A finisher that lands mid-route gets the cinematic treatment, and mashing after it fires the signature ender.
+        static void BuildRoutes(MoveSet m)
+        {
+            var L = m.Light; var H = m.HeavyChain;
+            int n = L.Length;
+            AttackDef Fin(AttackDef a) { var c = a.Copy(); c.Finisher = true; return c; }
+            AttackDef Derive(AttackDef data, string name, Clip clip, bool finisher)
+            {
+                var c = data.Copy(); c.Name = name; c.Clip = clip; c.Chargeable = false; c.DashStrike = false; c.Finisher = finisher;
+                return c;
+            }
+            var lastL = Fin(L[n - 1]);
+            var slam = Fin(H[2]);
+            var power = Derive(H[1], "Power " + L[Mathf.Min(1, n - 1)].Name, Heavier(L[Mathf.Min(1, n - 1)].Clip, " Power", false, 1.15f, 1.45f, false), false);
+            var breaker = Derive(H[2], L[n - 1].Name + " Breaker", Heavier(L[n - 1].Clip, " Breaker", false, 1.3f, 2f, true), true);
+            var pursuit = Derive(L[Mathf.Min(1, n - 1)], "Pursuit " + m.Dash.Name, m.Dash.Clip, false);
+            pursuit.Startup += 0.02f; pursuit.Lunge = new Vector2(Mathf.Max(8f, m.Dash.Lunge.x), 0f); pursuit.Damage *= 1.1f;
+            var sweep = Fin(m.Sweep);
+            var launcher = m.Launcher.Copy(); launcher.Chargeable = false;
+
+            m.Routes = new Dictionary<string, AttackDef>
+            {
+                { "L", L[0] }, { "LL", L[Mathf.Min(1, n - 1)] }, { "LLL", L[Mathf.Min(2, n - 1)] }, { "LLLL", lastL },
+                { "H", H[0] }, { "HH", H[1] }, { "HHH", slam },
+                { "LH", power }, { "LLH", launcher }, { "LLLH", breaker },
+                { "LHL", pursuit }, { "HL", pursuit },
+                { "LHH", slam }, { "HLH", slam }, { "LHLH", slam },
+                { "HLL", L[Mathf.Min(2, n - 1)] }, { "HLLL", lastL }, { "LHLL", lastL },
+                { "HHL", sweep },
+            };
         }
 
         static AttackDef Flavor(AttackDef a, in Kf idle, float exag, bool southpaw)

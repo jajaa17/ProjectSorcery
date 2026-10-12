@@ -28,6 +28,7 @@ namespace ProjectSorcery
         public float CeGain = 3f;
         public bool Chargeable;          // hold the button to charge (heavy smash)
         public bool DashStrike;          // performed out of a dash
+        public bool Finisher;            // ends a combo route: lands as a cinematic impact when the route connected
         public Clip Clip;                // visual choreography (never read by the simulation)
         public float Total => Startup + Active + Recovery;
         public AttackDef Copy() => (AttackDef)MemberwiseClone();

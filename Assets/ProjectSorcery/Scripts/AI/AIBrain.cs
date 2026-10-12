@@ -39,6 +39,8 @@ namespace ProjectSorcery
         float idleTimer;
         float comboTimer;
         int comboRoute, comboStep;
+        string plan = "";   // comboRoute 4: a planned button route (see MoveLib.BuildRoutes)
+        static readonly string[] Plans = { "HHH", "LHH", "LLLH", "HLLL", "LHLL", "HHL", "LHLH", "HLH" };
         float mashClock;
         bool wantRct, wantSimple;
 
@@ -361,7 +363,7 @@ namespace ProjectSorcery
                     comboRoute = PickRoute();
                     comboStep = 0;
                     if (comboRoute == 3 && f.Grounded) { hold = IB.Down; Press(IB.Light); return; } // sweep opener
-                    Press(IB.Light);
+                    Press(comboRoute == 4 && plan.Length > 0 && plan[0] == 'H' ? IB.Heavy : IB.Light);
                     return;
                 }
                 if (zoner && !t.Vulnerable) { MoveAway(toward); if (M.Rng.Chance(0.25f)) Press(IB.Dash); return; }
@@ -394,10 +396,12 @@ namespace ProjectSorcery
         {
             float r = M.Rng.Value();
             if (P.ComboSkill < 0.3f) return r < 0.7f ? 0 : 1;
-            if (r < 0.3f) return 0;                       // L L L L
-            if (r < 0.55f) return 1;                      // L L Heavy (black flash attempt)
-            if (r < 0.8f + 0.1f * P.ComboSkill) return 2; // L L Launcher -> air combo
-            return 3;                                      // sweep opener
+            if (r < 0.2f) return 0;                       // L L L L
+            if (r < 0.35f) return 1;                      // L L L Heavy (breaker; black flash attempt)
+            if (r < 0.55f) return 2;                      // L L Launcher -> air combo
+            if (r < 0.65f) return 3;                      // sweep opener
+            plan = Plans[M.Rng.Range(0, Plans.Length)];   // a mixed Light/Heavy route
+            return 4;
         }
 
         void ContinueCombo(Fighter t, float dist)
@@ -413,6 +417,14 @@ namespace ProjectSorcery
             {
                 Press(IB.Heavy);
                 comboStep = 99;
+                return;
+            }
+
+            // planned mixed route: press the next button of the plan, then mash once for the signature ender
+            if (comboRoute == 4 && f.Grounded)
+            {
+                if (comboStep + 1 < plan.Length) { comboStep++; Press(plan[comboStep] == 'H' ? IB.Heavy : IB.Light); }
+                else if (comboStep < 90) { if (M.Rng.Chance(P.ComboSkill)) Press(IB.Light); comboStep = 99; }
                 return;
             }
 

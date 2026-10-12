@@ -184,7 +184,7 @@ namespace ProjectSorcery
             CancelCast();
             strike = null;
             CurAttack = null;
-            ComboStep = 0;
+            route = "";
             if (State == FState.RCT || State == FState.SimpleDomain || State == FState.Block) SetState(FState.Idle);
 
             float weight = Def.Weight * (IsBoss ? 3f : 1f);

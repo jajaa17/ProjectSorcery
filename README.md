@@ -111,6 +111,19 @@ The alternate keys in brackets are for solo play. They switch off automatically 
 - **Hold Heavy** to charge a smash; a full charge bursts out as an aura blast that breaks guards
 - **Mash Light (auto-combo)**: every style has a four-hit string (e.g. jab, cross, heavy hook, roundhouse). Keep pressing, even on a whiff, and it flows into the next hit. If the string connects, the last hit lands as an impact frame with a heavy freeze and a breath of slow motion; keep mashing and the combo ends in the fighter's own signature technique (their first ready attacking skill, so every character's auto-combo is different)
 - **Heavy, Heavy, Heavy**: three planted blows, each heavier than the last; the second comes off the other hand, the third sits down into a slam
+- **Combo routes**: Light and Heavy mix freely inside a combo, and every route plays a different move built from the fighter's own choreography, so the same buttons look different on every character. Routes marked * are finishers (impact frame, freeze, slow motion; keep pressing for the signature ender):
+
+  | Route | What happens |
+  |---|---|
+  | `L L L L`* | light string |
+  | `H H H`* | heavy string, ends in a sit-down slam |
+  | `L H` | power shot: the second light thrown as a full heavy |
+  | `L L H` | launcher (jump to chase into the air) |
+  | `L L L H`* | breaker: the light finisher thrown as a heavy slam |
+  | `H L`, `L H L` | pursuit: a lunging chase strike after the heavy knocks them back |
+  | `L H H`*, `H L H`*, `L H L H`* | cut into the heavy slam |
+  | `H L L`, `H L L L`*, `L H L L`* | back into the light string |
+  | `H H L`* | low sweep knockdown |
 - **Forward + Heavy**: lunging strike. **Down + Heavy**: launcher. In the air, **Heavy** hangs for a beat then slams down
 - **Attack out of a forward dash** for a dash strike
 - **Black Flash**: land a light hit, then press Heavy *in rhythm*. Nail the window for a critical hit with a 2.5× distortion. It's rare: after one lands, the spark needs a few seconds to return (less while you're in the zone).
