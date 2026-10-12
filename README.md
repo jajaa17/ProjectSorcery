@@ -16,7 +16,7 @@ Stick figures, ink-black impact frames, screen-shattering domain clashes. 71 pla
 - **Domain clashes**: 2-way *and* 3-way (1v1v1) clashes with anime-style portrait cut-ins and button mashing
 - **Black Flash**: rhythm-timed crits with full-screen ink-inversion impact frames and their own sound design
 - Reverse Cursed Technique healing, Simple Domain, Infinity-style barriers, heavenly restrictions (no cursed energy, invisible to sure-hits, monstrous bodies), adaptation, shikigami, binding vows and more
-- Hand-keyed stick-fight choreography: every move goes anticipation → snap → follow-through, fists travel in straight lines (IK), blades sweep real arcs with smear frames, spins actually turn the body
+- Hand-keyed stick-fight choreography: every move goes anticipation → snap → follow-through, fists travel in straight lines (IK), blades sweep real arcs with smear frames, and every strike is planted and grounded (no floaty twirls)
 - 11 fighting styles (boxer, martial artist, agile, brute, wrestler, feral, elegant, caster, sword, staff, heavy weapon), each with its own light string, heavy smash, launcher, sweep, dash strike and aerials, plus per-character body language (hand-in-pocket swagger, folded arms, tall and arrogant…)
 - Hand-drawn timing: gameplay and input run at 60 Hz while fighters are drawn at 24 fps (or 12 fps on twos, or smooth) in Settings → Feel; travel stays smooth, limbs snap from drawing to drawing, and hits force a fresh drawing instantly
 - Weight: hit-stop freezes on impact, the camera punches toward the hit, full-charge smashes slow time, combos decay and break so nobody gets stuck on a wall
@@ -109,8 +109,8 @@ The alternate keys in brackets are for solo play. They switch off automatically 
 **Universal techniques**
 - `Down + Light` sweep, `Down + Heavy` launcher
 - **Hold Heavy** to charge a smash; a full charge bursts out as an aura blast that breaks guards
-- **Light, Light, Light, Light**: every style has a four-hit string (e.g. jab, cross, heavy hook, roundhouse). Keep pressing, even on a whiff, and it flows into the next hit
-- **Heavy, Heavy, Heavy**: each heavy spins the body into a bigger follow-up; the third launches
+- **Mash Light (auto-combo)**: every style has a four-hit string (e.g. jab, cross, heavy hook, roundhouse). Keep pressing, even on a whiff, and it flows into the next hit. If the string connects, the last hit lands as an impact frame with a heavy freeze and a breath of slow motion; keep mashing and the combo ends in the fighter's own signature technique (their first ready attacking skill, so every character's auto-combo is different)
+- **Heavy, Heavy, Heavy**: three planted blows, each heavier than the last; the second comes off the other hand, the third sits down into a slam
 - **Forward + Heavy**: lunging strike. **Down + Heavy**: launcher. In the air, **Heavy** hangs for a beat then slams down
 - **Attack out of a forward dash** for a dash strike
 - **Black Flash**: land a light hit, then press Heavy *in rhythm*. Nail the window for a critical hit with a 2.5× distortion. It's rare: after one lands, the spark needs a few seconds to return (less while you're in the zone).

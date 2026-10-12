@@ -49,23 +49,68 @@ namespace ProjectSorcery
                       float rot = 0f, float head = 0f, float drop = 0f, float wr = 0f, float hx = 0f, float tn = 0f)
             => Pose.P(lean, uaB, faB, uaF, faF, thB, shB, thF, shF, rot, head, drop, wr, hx, tn);
 
-        static Clip S(string n, Pose a, Pose c, Pose f, Limb l) => Clip.Strike(n, a, c, f, l);
-
-        /// <summary>A bigger copy of a strike whose wind-up spins the body `turns` times into the contact.</summary>
-        static Clip Spin(Clip src, float turns, float scale, float impact, bool slam)
+        static Clip S(string n, Pose a, Pose c, Pose f, Limb l)
         {
-            var c = new Clip { Name = src.Name + (turns > 1.5f ? "III" : "II"), T = src.T, E = src.E, Smear = src.Smear, TwoHand = src.TwoHand, Ghosts = true, Impact = impact, GroundSlam = slam || src.GroundSlam, Stiff = src.Stiff, Aura = src.Aura, K = new Kf[src.K.Length] };
+            if (Spins(a, c, f)) { a = Ground(a); c = KeepGuard(Ground(c), a, l); f = KeepGuard(Ground(f), a, l); }
+            return Clip.Strike(n, a, c, f, l);
+        }
+
+        // ---- grounded choreography: no twirls ------------------------------------------------------------
+        // Every melee move is a planted, committed strike. A key that was drawn with the body spun round (turn ~0.5)
+        // is mirrored so it keeps the same silhouette facing the target, the turn itself is removed, the feet stay
+        // on the floor (no hop) and whole-body rotation is limited to a lean into the blow.
+        static bool Spins(params Pose[] keys)
+        {
+            foreach (var k in keys) if (Mathf.Abs(k.Tn) > 0.01f) return true;
+            return false;
+        }
+
+        /// <summary>A grounded kick keeps the hands up in the guard it started from (spin keys flung them overhead).</summary>
+        static Pose KeepGuard(Pose p, in Pose guard, Limb l)
+        {
+            if (l != Limb.FootF && l != Limb.FootB) return p;
+            p.UaB = guard.UaB; p.FaB = guard.FaB; p.UaF = guard.UaF; p.FaF = guard.FaF;
+            return p;
+        }
+
+        static Pose Ground(Pose p)
+        {
+            float t = Mathf.Repeat(p.Tn, 1f);
+            if (t > 0.25f && t < 0.75f)
+            {
+                p.Lean = -p.Lean; p.UaB = -p.UaB; p.FaB = -p.FaB; p.UaF = -p.UaF; p.FaF = -p.FaF;
+                p.ThB = -p.ThB; p.ShB = -p.ShB; p.ThF = -p.ThF; p.ShF = -p.ShF;
+                p.Rot = -p.Rot; p.Head = -p.Head; p.Wr = -p.Wr; p.Hx = -p.Hx;
+            }
+            p.Tn = 0f;
+            p.Rot = Mathf.Clamp(p.Rot, -20f, 20f);
+            p.Drop = Mathf.Max(p.Drop, 0.02f);   // sit into the strike instead of floating off the floor
+            return p;
+        }
+
+        /// <summary>
+        /// A heavier follow-up of a strike for the heavy string: no spin. The hips sit lower, the lean commits harder and
+        /// the contact hits bigger; `otherSide` throws it off the other hand (or, armed, the same weapon from a deeper cock).
+        /// </summary>
+        static Clip Heavier(Clip src, string suffix, bool otherSide, float scale, float impact, bool slam)
+        {
+            var c = new Clip { Name = src.Name + suffix, T = src.T, E = src.E, Smear = src.Smear, TwoHand = src.TwoHand, Ghosts = false, Impact = impact, GroundSlam = slam || src.GroundSlam, Stiff = src.Stiff * 1.1f, Aura = src.Aura, K = new Kf[src.K.Length] };
+            if (otherSide) c.Smear = src.Smear == Limb.HandF ? Limb.HandB : src.Smear == Limb.HandB ? Limb.HandF : src.Smear;
             for (int i = 0; i < src.K.Length; i++)
             {
-                var k = src.K[i];
-                float u = Mathf.Clamp01(src.T[i]);
-                k.Tn += turns * u * u * (3f - 2f * u);   // the spin winds up and completes exactly at contact
-                k.Lean *= scale; k.Hx *= scale + 0.15f; k.Drop += 0.05f * scale;
+                var k = otherSide ? src.K[i].SwapArms() : src.K[i];
+                k.Tn = 0f;
+                k.Lean *= scale; k.Hx *= scale + 0.15f;
+                k.Drop += 0.06f * scale;                      // grounded: plant and sink into every swing
                 c.K[i] = k;
             }
             return c;
         }
-        static Clip A(string n, Pose a, Pose m, Pose c, Pose f, Limb l) => Clip.Arc(n, a, m, c, f, l);
+        static Clip A(string n, Pose a, Pose m, Pose c, Pose f, Limb l)
+        {
+            if (Spins(a, m, c, f)) { a = Ground(a); m = KeepGuard(Ground(m), a, l); c = KeepGuard(Ground(c), a, l); f = KeepGuard(Ground(f), a, l); }
+            return Clip.Arc(n, a, m, c, f, l);
+        }
 
         // ------------------------------------------------------------------ gameplay templates
         enum Slot { L1, L2, L3, L4, Heavy, Heavy2, Heavy3, Launch, Sweep, Dash, Air1, Air2, AirHeavy, Dive }
@@ -269,12 +314,13 @@ namespace ProjectSorcery
                 default: set = BrawlerSet(); break;
             }
             set.Style = s;
-            // heavy string: the second swing spins the whole body into a bigger wind-up, the third spins twice
+            bool armedStyle = s == MoveStyle.Blade || s == MoveStyle.Staff || s == MoveStyle.HeavyWeapon;
+            // heavy string: three planted blows that each hit harder; the second comes off the other side, the third sits down into a slam
             set.HeavyChain = new[]
             {
                 set.Heavy,
-                Make(Slot.Heavy2, set.Heavy.Name + " II", Spin(set.Heavy.Clip, 1f, 1.12f, 1.35f, false), s),
-                Make(Slot.Heavy3, set.Heavy.Name + " III", Spin(set.Heavy.Clip, 2f, 1.25f, 1.9f, true), s),
+                Make(Slot.Heavy2, set.Heavy.Name + " II", Heavier(set.Heavy.Clip, " II", !armedStyle, 1.12f, 1.35f, false), s),
+                Make(Slot.Heavy3, set.Heavy.Name + " III", Heavier(set.Heavy.Clip, " III", false, 1.25f, 1.9f, true), s),
             };
             bases[s] = set;
             return set;
@@ -286,7 +332,7 @@ namespace ProjectSorcery
             m.Air = new[]
             {
                 Make(Slot.Air1, "Air Knee", S("AirKnee", P(10, -30, 20, 120, 150, 40, -40, 80, -10), P(-8, -40, 0, 110, 150, 30, -40, 98, 94), P(0, -30, 10, 110, 150, 30, -40, 72, 40), Limb.FootF), s),
-                Make(Slot.Air2, "Air Spin Kick", S("AirSpin", P(6, 60, 140, 80, 150, 20, -40, 60, -20, 0, 0, 0, 0, 0, 0.06f), P(-16, 60, 140, 80, 150, -106, -112, 40, -20, 0, -6, 0, 0, 0, 0.5f), P(-6, 60, 140, 80, 150, 0, -40, 50, -10, 0, 0, 0, 0, 0, 1f), Limb.FootB), s, KickMid),
+                Make(Slot.Air2, "Air Kick", S("AirSpin", P(6, 60, 140, 80, 150, 20, -40, 60, -20, 0, 0, 0, 0, 0, 0.06f), P(-16, 60, 140, 80, 150, -106, -112, 40, -20, 0, -6, 0, 0, 0, 0.5f), P(-6, 60, 140, 80, 150, 0, -40, 50, -10, 0, 0, 0, 0, 0, 1f), Limb.FootB), s, KickMid),
             };
             m.AirHeavy = Make(Slot.AirHeavy, "Hammer Drop", A("AirHammer", P(-16, 195, 212, 190, 205, 40, -30, 70, 0, 0, -10), P(8, 150, 150, 150, 150, 40, -30, 70, 0), P(36, 60, 25, 62, 22, 20, -40, 60, -10, 0, 14, 0, 0, 0.1f), P(40, 50, 15, 52, 12, 20, -40, 60, -10), Limb.Hands).With(impact: 1.3f), s);
             m.Dive = Make(Slot.Dive, "Meteor Heel", S("Dive", P(-12, 140, 170, 120, 150, 60, -20, 92, -10, 0, -6, -0.05f), P(32, 140, 170, 120, 150, 80, -10, 30, 38), P(30, 140, 170, 120, 150, 80, -10, 30, 38), Limb.FootF).With(ghosts: true, impact: 1.3f), s);
@@ -304,7 +350,7 @@ namespace ProjectSorcery
                 Make(Slot.L3, "Heavy Hook", S("Hook", P(2, 94, 100, -30, 70, -34, -48, 30, 20, 0, 4, 0.08f, 0, -0.04f, 0.03f), P(28, -20, 140, 76, 122, -50, -52, 50, 4, 0, 6, 0.22f, 0, 0.16f, 0.1f), P(36, -40, 130, 30, 165, -50, -52, 52, 4, 0, 8, 0.24f, 0, 0.2f, 0.14f), Limb.HandF).With(impact: 1.35f), s, Body),
                 Make(Slot.L4, "Roundhouse", S("Roundhouse", P(-6, 30, 140, 40, 150, -14, -22, 72, -24, 0, 0, 0.02f), P(-26, 55, 150, -35, -5, -6, -10, 104, 100, 0, -6, 0, 0, 0.08f), P(-14, 45, 145, -10, 30, -10, -14, 70, 20), Limb.FootF).With(impact: 1.2f), s, KickHigh),
             };
-            AltFinisher[s] = S("Spinning Backfist", P(6, 22, 118, 42, 142, -22, -36, 26, -2, 0, 0, 0.05f, 0, 0, 0.06f), P(14, -96, -88, 40, 140, -30, -42, 32, 0, 0, 0, 0, 0, 0.12f, 0.5f), P(8, 20, 110, 45, 140, -26, -38, 28, 0, 0, 0, 0, 0, 0, 1f), Limb.HandB);
+            AltFinisher[s] = S("Rear Backfist", P(6, 22, 118, 42, 142, -22, -36, 26, -2, 0, 0, 0.05f, 0, 0, 0.06f), P(14, -96, -88, 40, 140, -30, -42, 32, 0, 0, 0, 0, 0, 0.12f, 0.5f), P(8, 20, 110, 45, 140, -26, -38, 28, 0, 0, 0, 0, 0, 0, 1f), Limb.HandB);
             m.Heavy = Make(Slot.Heavy, "Haymaker", A("Haymaker", P(-16, -60, 160, 75, 115, -34, -70, 38, 30, 0, -4, 0.08f, 0, -0.12f), P(8, 10, 120, 50, 130, -42, -58, 46, 10, 0, 0, 0.12f), P(36, 98, 94, -10, 120, -62, -64, 62, 4, 0, 6, 0.22f, 0, 0.42f), P(42, 102, 98, -20, 110, -62, -64, 62, 4, 0, 8, 0.24f, 0, 0.46f), Limb.HandB).With(impact: 1.6f), s);
             m.Launcher = Make(Slot.Launch, "Rising Uppercut", S("Uppercut", P(30, 30, 140, 0, 60, -46, -92, 62, -26, 0, 10, 0.32f), P(-8, 20, 130, 168, 182, -18, -22, 12, -4, 0, -16, -0.06f), P(-12, 20, 130, 162, 178, -16, -20, 14, 0, 0, -10, -0.02f), Limb.HandF).With(impact: 1.3f), s);
             m.Sweep = Make(Slot.Sweep, "Low Sweep", S("Sweep", P(30, 10, 60, 60, 110, -58, -118, 70, -30, 0, 0, 0.3f), P(38, -10, 20, 40, 70, -64, -126, 96, 93, 0, 0, 0.38f, 0, 0.05f), P(32, 0, 30, 50, 100, -60, -120, 80, 60, 0, 0, 0.35f), Limb.FootF), s, Low);
@@ -321,11 +367,11 @@ namespace ProjectSorcery
             m.Light = new[]
             {
                 Make(Slot.L1, "Palm Strike", S("Palm", P(2, 40, 150, 20, 160, -22, -34, 26, -2), P(18, 38, 148, 90, 78, -34, -50, 38, 6, 0, 0, 0, 0, 0.12f), P(14, 40, 150, 86, 84, -30, -46, 34, 4), Limb.HandF), s),
-                Make(Slot.L2, "Spinning Backfist", S("Backfist", P(6, 40, 150, 60, 120, -24, -36, 28, -2, 0, 0, 0, 0, 0, 0.06f), P(12, -96, -90, 40, 140, -28, -40, 30, 0, 0, 0, 0, 0, 0.1f, 0.5f), P(8, 30, 120, 50, 130, -26, -36, 28, 0, 0, 0, 0, 0, 0, 1f), Limb.HandB), s),
+                Make(Slot.L2, "Backfist", S("Backfist", P(6, 40, 150, 60, 120, -24, -36, 28, -2, 0, 0, 0, 0, 0, 0.06f), P(12, -96, -90, 40, 140, -28, -40, 30, 0, 0, 0, 0, 0, 0.1f, 0.5f), P(8, 30, 120, 50, 130, -26, -36, 28, 0, 0, 0, 0, 0, 0, 1f), Limb.HandB), s),
                 Make(Slot.L3, "Snap Kick", S("SnapKick", P(2, 40, 150, 70, 110, -20, -28, 88, -24), P(-12, 40, 150, 60, 120, -16, -20, 96, 94, 0, 0, 0, 0, 0.1f), P(-6, 40, 150, 70, 110, -18, -24, 70, 10), Limb.FootF), s, KickMid),
-                Make(Slot.L4, "Spinning Hook Kick", S("SpinHook", P(10, 40, 150, 70, 100, -24, -36, 28, -2, 0, 0, 0.04f, 0, 0, 0.08f), P(-18, 60, 150, 80, 150, -108, -118, 10, -10, 0, -6, 0, 0, 0.06f, 0.5f), P(-6, 40, 150, 70, 110, -30, -40, 20, -10, 0, 0, 0, 0, 0, 1f), Limb.FootB).With(impact: 1.2f), s, KickHigh),
+                Make(Slot.L4, "Rear Roundhouse", S("SpinHook", P(10, 40, 150, 70, 100, -24, -36, 28, -2, 0, 0, 0.04f, 0, 0, 0.08f), P(-18, 60, 150, 80, 150, -108, -118, 10, -10, 0, -6, 0, 0, 0.06f, 0.5f), P(-6, 40, 150, 70, 110, -30, -40, 20, -10, 0, 0, 0, 0, 0, 1f), Limb.FootB).With(impact: 1.2f), s, KickHigh),
             };
-            AltFinisher[s] = S("Tornado Kick", P(10, 40, 150, 70, 100, -40, -80, 50, -30, 0, 0, 0.2f, 0, 0, 0.1f), P(-20, 150, 170, 140, 160, -100, -110, 60, -20, 0, -8, -0.15f, 0, 0.1f, 0.5f), P(-6, 40, 150, 70, 110, -26, -40, 24, -8, 0, 0, 0, 0, 0, 1f), Limb.FootB);
+            AltFinisher[s] = S("Stepping Roundhouse", P(10, 40, 150, 70, 100, -40, -80, 50, -30, 0, 0, 0.2f, 0, 0, 0.1f), P(-20, 150, 170, 140, 160, -100, -110, 60, -20, 0, -8, -0.15f, 0, 0.1f, 0.5f), P(-6, 40, 150, 70, 110, -26, -40, 24, -8, 0, 0, 0, 0, 0, 1f), Limb.FootB);
             m.Heavy = Make(Slot.Heavy, "Twin Dragon Palms", S("TwinPalm", P(-12, -60, -20, -50, -10, -30, -40, 40, 0, 0, 6, 0.18f), P(26, 92, 86, 95, 88, -50, -72, 52, 10, 0, 0, 0.12f, 0, 0.32f), P(28, 90, 90, 92, 92, -50, -72, 52, 10, 0, 0, 0.12f), Limb.Hands).With(impact: 1.4f, slam: false), s);
             m.Heavy.Clip.Aura = true;
             m.Launcher = Make(Slot.Launch, "Crescent Rise", S("Crescent", P(18, 40, 150, 70, 110, -40, -80, 56, -24, 0, 0, 0.22f), P(-24, 30, 130, 50, 140, -10, -14, 165, 170, 0, -10), P(-14, 40, 150, 70, 120, -14, -20, 110, 80), Limb.FootF).With(impact: 1.2f), s);
@@ -347,15 +393,9 @@ namespace ProjectSorcery
                 Make(Slot.L3, "Head Kick", S("HeadKick", P(10, -30, 30, 50, 120, -30, -60, 70, -30, 0, 0, 0.05f), P(-32, -50, -20, -40, 0, -6, -10, 128, 132, 0, -10), P(-20, -40, 0, -20, 30, -10, -16, 90, 60), Limb.FootF), s, KickHigh),
                 Make(Slot.L4, "Axe Kick", A("AxeKick", P(-14, -40, -10, -30, 10, -10, -16, 172, 178, 0, -12), P(-4, -40, -10, -20, 20, -12, -18, 140, 150), P(26, -50, -20, -40, 0, -30, -50, 55, 40, 0, 8, 0.12f, 0, 0.1f), P(28, -40, -10, -30, 10, -34, -56, 45, 20, 0, 6, 0.14f), Limb.FootF).With(impact: 1.3f), s, KickMid),
             };
-            AltFinisher[s] = S("Cartwheel Kick", P(20, -30, 30, 50, 120, -40, -80, 52, -26, 0, 0, 0.15f), P(10, 120, 160, 160, 190, -110, -120, 40, -20, -60, 0, -0.1f, 0, 0.1f, 0.5f), P(20, -30, 30, 50, 120, -42, -90, 52, -26, 0, 0, 0.12f, 0, 0, 1f), Limb.FootB);
+            AltFinisher[s] = S("Hammer Kick", P(20, -30, 30, 50, 120, -40, -80, 52, -26, 0, 0, 0.15f), P(10, 120, 160, 160, 190, -110, -120, 40, -20, -60, 0, -0.1f, 0, 0.1f, 0.5f), P(20, -30, 30, 50, 120, -42, -90, 52, -26, 0, 0, 0.12f, 0, 0, 1f), Limb.FootB);
             m.Heavy = Make(Slot.Heavy, "Flying Knee", S("FlyingKnee", P(26, -80, -60, -70, -50, -50, -100, 60, -30, 0, 0, 0.3f), P(4, -70, -40, -80, -50, -40, -80, 112, 10, 0, 6, -0.25f, 0, 0.45f), P(10, -50, -20, -40, -10, -30, -60, 80, 0, 0, 0, -0.05f), Limb.FootF).With(ghosts: true, impact: 1.5f), s, Body);
-            m.Launcher = Make(Slot.Launch, "Backflip Kick", Clip.Keys("Backflip", Limb.FootF,
-                (0f, P(20, -40, 30, 50, 120, -40, -80, 52, -26, 0, 0, 0.28f), Ease.Linear),
-                (0.85f, P(26, -50, 20, 40, 110, -46, -96, 56, -30, 0, 0, 0.32f), Ease.InOut),
-                (1f, P(-10, 150, 180, 160, 190, -20, -30, 150, 165, -110, -10, -0.1f), Ease.Snap),
-                (1.9f, P(-6, 140, 170, 150, 180, 0, -30, 120, 120, -220, 0, -0.1f), Ease.Out),
-                (2.6f, P(10, 120, 150, 140, 170, 20, -30, 60, 10, -360, 0, -0.05f), Ease.Out),
-                (3f, P(16, -30, 30, 50, 120, -40, -80, 52, -26, -360, 0, 0.12f), Ease.InOut)).With(impact: 1.3f), s);
+            m.Launcher = Make(Slot.Launch, "Rising Knee", S("RisingKnee", P(24, -40, 30, 50, 120, -40, -80, 52, -26, 0, 0, 0.3f), P(-6, 60, 10, 70, 20, -12, -16, 128, 20, 0, -6, -0.05f, 0, 0.3f), P(4, 20, 40, 40, 80, -16, -24, 90, 10, 0, 0, 0.05f), Limb.FootF).With(impact: 1.3f), s);
             m.Sweep = Make(Slot.Sweep, "Breaker Sweep", S("BreakSweep", P(34, 20, 40, 40, 60, -60, -120, 70, -34, 0, 0, 0.36f, 0, 0, 0.04f), P(40, 60, 20, 30, 20, -98, -96, 60, -60, 0, 0, 0.44f, 0, 0, 0.5f), P(34, 20, 40, 40, 60, -60, -120, 70, -34, 0, 0, 0.36f, 0, 0, 1f), Limb.FootB), s, Low);
             m.Dash = Make(Slot.Dash, "Dropkick", S("Dropkick", P(16, -40, 30, 50, 120, -40, -80, 52, -26, 0, 0, 0.2f), P(-42, -80, -40, -70, -30, 88, 86, 96, 94, -18, -10, -0.2f, 0, 0.35f), P(-24, -60, -20, -50, -10, 40, 20, 60, 40, 0, 0, -0.05f), Limb.FootF).With(ghosts: true, impact: 1.4f), s, KickMid);
             UnarmedAir(m, s);
@@ -415,7 +455,7 @@ namespace ProjectSorcery
                 Make(Slot.L1, "Claw Rake", A("Rake", P(4, 5, 30, 168, 205, -32, -60, 40, -16, 0, -14), P(16, 5, 30, 130, 150, -36, -66, 42, -18), P(36, 5, 30, 66, 35, -44, -76, 48, -10, 0, -10, 0.05f, 0, 0.12f), P(40, 5, 30, 20, -20, -46, -78, 48, -10, 0, -10, 0.06f), Limb.HandF), s),
                 Make(Slot.L2, "Rising Swipe", S("RisingSwipe", P(36, -30, -50, 20, 40, -40, -90, 50, -30, 0, -16, 0.12f), P(14, 140, 165, 20, 40, -34, -60, 42, -10, 0, -20, 0, 0, 0.1f), P(10, 165, 190, 20, 40, -32, -58, 40, -10, 0, -20), Limb.HandB), s),
                 Make(Slot.L3, "Pounce Bite", S("Pounce", P(20, 20, 20, 25, 25, -50, -100, 60, -30, 0, -10, 0.3f), P(56, 80, 40, 85, 45, -80, -90, 46, 20, 0, 30, 0.1f, 0, 0.35f), P(48, 60, 30, 65, 35, -66, -86, 46, 10, 0, 20, 0.1f), Limb.Hands), s, Body),
-                Make(Slot.L4, "Whirling Claws", S("WhirlClaw", P(30, 10, 40, 20, 50, -40, -80, 46, -24, 0, -10, 0.12f, 0, 0, 0.06f), P(30, -100, -110, 100, 110, -36, -72, 44, -20, 0, -14, 0.06f, 0, 0.1f, 0.5f), P(30, 5, 30, 20, 40, legs.Item1, legs.Item2, legs.Item3, legs.Item4, 0, -20, 0.05f, 0, 0, 1f), Limb.Hands).With(impact: 1.2f), s),
+                Make(Slot.L4, "Raking Claws", S("WhirlClaw", P(30, 10, 40, 20, 50, -40, -80, 46, -24, 0, -10, 0.12f, 0, 0, 0.06f), P(30, -100, -110, 100, 110, -36, -72, 44, -20, 0, -14, 0.06f, 0, 0.1f, 0.5f), P(30, 5, 30, 20, 40, legs.Item1, legs.Item2, legs.Item3, legs.Item4, 0, -20, 0.05f, 0, 0, 1f), Limb.Hands).With(impact: 1.2f), s),
             };
             AltFinisher[s] = S("Tail Lash", P(30, 5, 30, 20, 40, -40, -90, 50, -30, 0, -14, 0.2f, 0, 0, 0.08f), P(10, 40, 60, 50, 70, -112, -116, 20, -20, 0, -10, 0.1f, 0, 0.06f, 0.5f), P(30, 5, 30, 20, 40, -32, -72, 42, -22, 0, -20, 0.05f, 0, 0, 1f), Limb.FootB);
             m.Heavy = Make(Slot.Heavy, "Lunge Rake", A("LungeRake", P(14, -70, -40, -60, -30, -60, -118, 66, -32, 0, -6, 0.35f), P(40, 120, 140, 125, 145, -60, -90, 56, 0, 0, 0, 0.1f), P(52, 70, 30, 75, 35, -78, -94, 52, 22, 0, 20, 0.12f, 0, 0.45f), P(56, 40, 0, 45, 5, -76, -92, 52, 20, 0, 20, 0.12f), Limb.Hands).With(impact: 1.5f, ghosts: true), s);
@@ -435,12 +475,12 @@ namespace ProjectSorcery
             {
                 Make(Slot.L1, "Backhand", S("Backhand", P(-6, -12, 12, 30, 175, -10, -14, 12, 2, 0, -6), P(8, -12, 12, 92, 110, -18, -26, 22, 4, 0, -4, 0, 0, 0.08f), P(4, -12, 12, 100, 140, -16, -22, 18, 4, 0, -4), Limb.HandF), s),
                 Make(Slot.L2, "High Kick", S("HighKick", P(-6, -20, 10, 0, 40, -10, -14, 60, -30, 0, -6), P(-36, -40, -10, -30, 10, -4, -8, 130, 134, 0, -8), P(-24, -30, 0, -20, 20, -6, -10, 90, 70, 0, -6), Limb.FootF), s, KickHigh),
-                Make(Slot.L3, "Spinning Heel", S("SpinHeel", P(0, -12, 12, -8, 18, -10, -14, 12, 2, 0, -6, 0, 0, 0, 0.06f), P(-24, 30, 80, 40, 80, -112, -118, 8, -8, 0, -6, 0, 0, 0.06f, 0.5f), P(-6, -12, 12, -8, 18, -12, -16, 12, 2, 0, -6, 0, 0, 0, 1f), Limb.FootB), s, KickHigh),
+                Make(Slot.L3, "Heel Kick", S("SpinHeel", P(0, -12, 12, -8, 18, -10, -14, 12, 2, 0, -6, 0, 0, 0, 0.06f), P(-24, 30, 80, 40, 80, -112, -118, 8, -8, 0, -6, 0, 0, 0.06f, 0.5f), P(-6, -12, 12, -8, 18, -12, -16, 12, 2, 0, -6, 0, 0, 0, 1f), Limb.FootB), s, KickHigh),
                 Make(Slot.L4, "Palm Thrust", S("PalmThrust", P(-8, -12, 12, -30, 60, -14, -20, 16, 0, 0, -6, 0, 0, -0.05f), P(22, -30, 10, 92, 95, -40, -58, 42, 6, 0, 0, 0.1f, 0, 0.28f), P(18, -30, 10, 88, 98, -36, -54, 40, 4, 0, 0, 0.08f), Limb.HandF).With(impact: 1.2f), s),
             };
-            AltFinisher[s] = S("Butterfly Kick", P(10, -12, 12, -8, 18, -30, -60, 40, -20, 0, -6, 0.2f, 0, 0, 0.06f), P(-10, 120, 140, 130, 150, -100, -106, 100, 100, -40, -8, -0.15f, 0, 0.1f, 0.5f), P(-4, -12, 12, -8, 18, -10, -12, 12, 2, 0, -6, 0, 0, 0, 1f), Limb.FootB);
+            AltFinisher[s] = S("Rear Teep", P(4, -12, 12, -8, 18, 70, -40, 10, 2, 0, -6, 0.08f), P(-16, -20, 30, -10, 40, 92, 88, -8, -6, 0, -6, 0.04f, 0, 0.2f), P(-6, -12, 12, -8, 18, 40, 10, 6, 2, 0, -6, 0.1f), Limb.FootB);
             m.Heavy = Make(Slot.Heavy, "Crescent Axe", A("CrescentAxe", P(-18, -40, 0, -20, 30, -8, -12, 176, 182, 0, -10), P(-6, -40, 0, -20, 30, -10, -14, 140, 150), P(24, -50, -10, -30, 10, -30, -52, 52, 38, 0, 6, 0.12f, 0, 0.12f), P(26, -40, 0, -20, 20, -32, -54, 46, 24, 0, 6, 0.14f), Limb.FootF).With(impact: 1.5f), s, KickMid);
-            m.Launcher = Make(Slot.Launch, "Rising Pirouette", S("Pirouette", P(10, -12, 12, -8, 18, -40, -80, 50, -24, 0, -6, 0.25f, 0, 0, 0.04f), P(-30, 30, 100, 60, 130, -14, -20, 170, 175, 0, -10, 0, 0, 0, 0.5f), P(-16, -12, 12, -8, 18, -12, -16, 110, 90, 0, -6, 0, 0, 0, 1f), Limb.FootF).With(impact: 1.2f), s);
+            m.Launcher = Make(Slot.Launch, "Skyward Kick", S("Pirouette", P(10, -12, 12, -8, 18, -40, -80, 50, -24, 0, -6, 0.25f, 0, 0, 0.04f), P(-30, 30, 100, 60, 130, -14, -20, 170, 175, 0, -10, 0, 0, 0, 0.5f), P(-16, -12, 12, -8, 18, -12, -16, 110, 90, 0, -6, 0, 0, 0, 1f), Limb.FootF).With(impact: 1.2f), s);
             m.Sweep = Make(Slot.Sweep, "Low Crescent", S("LowCrescent", P(28, -12, 12, 30, 60, -58, -118, 70, -30, 0, -6, 0.3f, 0, 0, 0.05f), P(34, 20, 60, 40, 60, -96, -94, 70, -40, 0, -6, 0.4f, 0, 0, 0.5f), P(28, -12, 12, 30, 60, -58, -118, 70, -30, 0, -6, 0.32f, 0, 0, 1f), Limb.FootB), s, Low);
             m.Dash = Make(Slot.Dash, "Gliding Palm", S("GlidePalm", P(-6, -12, 12, -30, 60, -16, -22, 18, 0, 0, -6, 0.05f), P(30, -40, -20, 94, 92, -60, -80, 30, 10, 0, -4, 0, 0, 0.4f), P(24, -30, -10, 90, 96, -50, -70, 34, 8, 0, -4), Limb.HandF).With(ghosts: true, impact: 1.3f), s);
             UnarmedAir(m, s);
@@ -460,7 +500,7 @@ namespace ProjectSorcery
                 Make(Slot.L4, "Burst Palm", S("BurstPalm", P(-10, -50, 30, -40, 40, -24, -36, 34, -4, 0, 4, 0.12f), P(20, 88, 90, 92, 88, -40, -60, 44, 8, 0, 0, 0.1f, 0, 0.18f), P(22, 86, 92, 90, 92, -42, -62, 44, 8, 0, 0, 0.1f), Limb.Hands).With(impact: 1.2f), s),
             };
             m.Light[3].Clip.Aura = true;
-            AltFinisher[s] = S("Spinning Elbow", P(4, 10, 60, 60, 112, -20, -28, 22, 0, 0, 0, 0, 0, 0, 0.06f), P(16, -60, -150, 40, 120, -32, -48, 34, 2, 0, 0, 0, 0, 0.12f, 0.5f), P(8, 10, 60, 60, 112, -20, -28, 22, 0, 0, 0, 0, 0, 0, 1f), Limb.HandB);
+            AltFinisher[s] = S("Rear Elbow", P(4, 10, 60, 60, 112, -20, -28, 22, 0), P(28, 88, 165, 40, 120, -40, -58, 40, 6, 0, 4, 0.06f, 0, 0.22f), P(22, 76, 150, 45, 120, -34, -50, 36, 3, 0, 2, 0.04f), Limb.HandB);
             m.Heavy = Make(Slot.Heavy, "Aura Blast", S("AuraBlast", P(-12, -55, 30, -45, 40, -26, -40, 36, -6, 0, 6, 0.16f), P(22, 90, 92, 92, 90, -44, -64, 46, 8, 0, 0, 0.12f, 0, 0.2f), P(26, 88, 94, 90, 94, -46, -66, 46, 8, 0, 0, 0.12f), Limb.Hands).With(impact: 1.5f), s);
             m.Heavy.Clip.Aura = true;
             m.Launcher = Make(Slot.Launch, "Rising Palm", S("RisingPalm", P(26, 10, 40, 10, 50, -48, -96, 60, -26, 0, 8, 0.3f), P(-10, 165, 180, 168, 182, -18, -22, 14, -2, 0, -14, -0.05f), P(-12, 158, 176, 160, 178, -16, -20, 14, 0, 0, -10), Limb.Hands).With(impact: 1.2f), s);
@@ -480,7 +520,7 @@ namespace ProjectSorcery
                 Make(Slot.L1, "Falling Cut", A("FallingCut", P(-8, 30, 110, 170, 205, -20, -30, 30, 0, 0, -6, 0, 35), P(8, 30, 110, 140, 150, -28, -44, 36, 4, 0, 0, 0, 30), P(26, 30, 110, 75, 55, -44, -64, 46, 10, 0, 0, 0.04f, 20, 0.15f), P(32, 30, 110, 30, 10, -46, -66, 48, 10, 0, 0, 0.08f, 0), Limb.Weapon), s),
                 Make(Slot.L2, "Rising Cut", A("RisingCut", P(24, 30, 110, -20, -40, -46, -80, 52, -10, 0, 0, 0.14f, -25), P(20, 30, 110, 30, 30, -40, -60, 46, 0, 0, 0, 0.08f, -10), P(-6, 30, 110, 125, 150, -22, -30, 28, 0, 0, -6, 0, 25, 0.1f), P(-12, 30, 110, 150, 175, -18, -26, 24, 0, 0, -8, 0, 30), Limb.Weapon), s),
                 Make(Slot.L3, "Piercing Thrust", S("Thrust", P(-4, 30, 110, 15, 40, -20, -30, 26, 0, 0, 0, 0, 50, -0.1f), P(30, 20, 100, 92, 90, -52, -68, 56, 14, 0, 0, 0.04f, 0, 0.32f), P(26, 20, 100, 88, 92, -48, -64, 52, 12, 0, 0, 0.04f, 2), Limb.Weapon).With(twoHand: 0), s, new Vector2(1.05f, 1.3f)),
-                Make(Slot.L4, "Whirlwind Cut", S("WhirlCut", P(10, 30, 110, 40, 60, -30, -50, 36, 0, 0, 0, 0.12f, 30, 0, 0.05f), P(20, 30, 110, -92, -90, -40, -60, 44, 6, 0, 0, 0.1f, 0, 0.1f, 0.5f), P(14, 30, 110, 60, 80, -34, -56, 40, 0, 0, 0, 0.08f, 30, 0, 1f), Limb.Weapon).With(twoHand: 0, impact: 1.3f), s),
+                Make(Slot.L4, "Cleaving Cut", S("WhirlCut", P(10, 30, 110, 40, 60, -30, -50, 36, 0, 0, 0, 0.12f, 30, 0, 0.05f), P(20, 30, 110, -92, -90, -40, -60, 44, 6, 0, 0, 0.1f, 0, 0.1f, 0.5f), P(14, 30, 110, 60, 80, -34, -56, 40, 0, 0, 0, 0.08f, 30, 0, 1f), Limb.Weapon).With(twoHand: 0, impact: 1.3f), s),
             };
             AltFinisher[s] = A("Cross Cut", P(-10, 200, 230, 170, 205, -22, -30, 30, 0, 0, -8, 0, 30), P(6, 150, 160, 140, 150, -30, -44, 36, 2, 0, 0, 0, 25), P(30, 40, 30, 70, 50, -48, -68, 50, 10, 0, 0, 0.1f, 15, 0.18f), P(34, 20, 0, 30, 10, -48, -68, 50, 10, 0, 0, 0.12f, 0), Limb.Weapon);
             m.Heavy = Make(Slot.Heavy, "Heaven Splitter", A("Splitter", P(-20, 30, 110, 195, 225, -22, -30, 34, 0, 0, -10, 0.04f, 35), P(4, 30, 110, 160, 175, -30, -44, 38, 4, 0, 0, 0, 20), P(40, 30, 110, 70, 45, -56, -80, 60, 14, 0, 6, 0.22f, 15, 0.4f), P(44, 30, 110, 40, 10, -56, -80, 60, 14, 0, 6, 0.24f, 5), Limb.Weapon).With(twoHand: 1, impact: 1.7f), s);
@@ -492,13 +532,7 @@ namespace ProjectSorcery
                 Make(Slot.Air1, "Air Cut", A("AirCut", P(-8, 30, 110, 170, 200, 40, -40, 70, 0, 0, -6, 0, 30), P(6, 30, 110, 140, 150, 40, -40, 70, 0, 0, 0, 0, 25), P(24, 30, 110, 72, 50, 30, -40, 60, -10, 0, 0, 0, 15), P(28, 30, 110, 30, 10, 30, -40, 60, -10, 0, 0, 0, 0), Limb.Weapon), s),
                 Make(Slot.Air2, "Air Rising Cut", A("AirRise", P(20, 30, 110, -20, -40, 40, -40, 70, 0, 0, 0, 0, -25), P(14, 30, 110, 40, 40, 40, -40, 70, 0, 0, 0, 0, -10), P(-10, 30, 110, 130, 160, 30, -40, 60, -10, 0, -6, 0, 25), P(-14, 30, 110, 150, 175, 30, -40, 60, -10, 0, -8, 0, 30), Limb.Weapon), s),
             };
-            m.AirHeavy = Make(Slot.AirHeavy, "Somersault Slash", Clip.Keys("SomerSlash", Limb.Weapon,
-                (0f, P(-10, 30, 110, 180, 210, 40, -40, 70, 0, 0, -6, 0, 30), Ease.Linear),
-                (0.85f, P(-14, 30, 110, 185, 215, 50, -30, 80, 0, 0, -8, 0, 32), Ease.InOut),
-                (1f, P(20, 30, 110, 70, 45, 50, -30, 80, 10, 200, 0, 0, 15), Ease.Snap),
-                (1.9f, P(20, 30, 110, 60, 35, 50, -30, 80, 10, 300, 0, 0, 10), Ease.Out),
-                (2.6f, P(10, 30, 110, 60, 80, 40, -40, 70, 0, 360, 0, 0, 30), Ease.Out),
-                (3f, P(10, 30, 110, 60, 80, 40, -40, 70, 0, 360, 0, 0, 30), Ease.Linear)).With(twoHand: 1, impact: 1.4f, ghosts: true), s);
+            m.AirHeavy = Make(Slot.AirHeavy, "Skyfall Cleave", A("SkyCleave", P(-14, 30, 110, 180, 210, 40, -40, 70, 0, 0, -8, 0, 30), P(-4, 30, 110, 160, 185, 40, -36, 74, 0, 0, -4, 0, 30), P(30, 30, 110, 70, 45, 40, -30, 70, 10, 0, 8, 0, 15, 0.1f), P(32, 30, 110, 55, 30, 40, -30, 70, 10, 0, 8, 0, 10), Limb.Weapon).With(twoHand: 1, impact: 1.5f), s);
             m.Dive = Make(Slot.Dive, "Plunging Blade", S("Plunge", P(-10, 30, 110, 170, 195, 50, -20, 80, 0, 0, -6, -0.05f, 0), P(20, 30, 110, 20, 0, 40, -20, 60, 20, 0, 10, 0, 0), P(20, 30, 110, 20, 0, 40, -20, 60, 20, 0, 10, 0, 0), Limb.Weapon).With(twoHand: 1, ghosts: true, impact: 1.4f), s);
             return m;
         }
@@ -512,14 +546,8 @@ namespace ProjectSorcery
             {
                 Make(Slot.L1, "Staff Thrust", S("StaffThrust", P(-4, 30, 110, 20, 40, -22, -34, 28, 0, 0, 0, 0, 50, -0.1f), P(24, 30, 110, 92, 90, -46, -64, 50, 10, 0, 0, 0.04f, 0, 0.28f), P(20, 30, 110, 88, 92, -42, -60, 48, 8, 0, 0, 0.04f, 4), Limb.Weapon), s, new Vector2(1.1f, 1.3f)),
                 Make(Slot.L2, "Overhead Whack", A("Whack", P(-12, 30, 110, 170, 195, -22, -30, 30, 0, 0, -8, 0, 20), P(6, 30, 110, 140, 150, -30, -44, 36, 2, 0, 0, 0, 20), P(28, 30, 110, 75, 60, -40, -60, 46, 8, 0, 4, 0.1f, 10, 0.12f), P(32, 30, 110, 50, 30, -42, -62, 46, 8, 0, 4, 0.12f, 0), Limb.Weapon).With(impact: 1.15f), s),
-                Make(Slot.L3, "Wheel Twirl", Clip.Keys("Twirl", Limb.Weapon,
-                    (0f, P(6, 30, 110, 70, 85, -26, -40, 30, 0, 0, 0, 0.04f, 0), Ease.Linear),
-                    (0.8f, P(4, 30, 110, 75, 90, -26, -40, 30, 0, 0, 0, 0.04f, -40), Ease.InOut),
-                    (1f, P(14, 30, 110, 85, 95, -34, -50, 36, 4, 0, 0, 0.06f, 200, 0.1f), Ease.Out),
-                    (1.85f, P(16, 30, 110, 88, 95, -36, -52, 38, 4, 0, 0, 0.06f, 560, 0.1f), Ease.Linear),
-                    (2.6f, P(10, 30, 110, 60, 80, -30, -46, 34, 2, 0, 0, 0.05f, 750), Ease.Out),
-                    (3f, P(10, 30, 110, 50, 80, -30, -50, 36, -6, 0, 0, 0.08f, 750), Ease.Linear)).With(twoHand: 0, impact: 1.1f), s, new Vector2(0.95f, 1.3f), 0.75f),
-                Make(Slot.L4, "Pole Vault Kick", S("VaultKick", P(14, 30, 110, 60, 40, -40, -80, 50, -20, 0, 0, 0.25f, -60), P(-40, 60, 40, 40, 20, 90, 88, 98, 95, -25, -6, -0.35f, -30, 0.2f), P(-20, 40, 60, 50, 40, 30, -10, 60, 20, 0, 0, -0.1f, -20), Limb.FootF).With(twoHand: 1, impact: 1.4f), s, KickMid),
+                Make(Slot.L3, "Rib Breaker", A("RibBreaker", P(-8, 30, 110, -40, -20, -22, -34, 30, 0, 0, 0, 0.06f, 0), P(4, 30, 110, 10, 30, -30, -46, 36, 2, 0, 0, 0.1f, 0), P(26, 30, 110, 92, 90, -46, -66, 50, 10, 0, 4, 0.16f, 0, 0.3f), P(28, 30, 110, 84, 86, -44, -64, 48, 8, 0, 4, 0.15f, 4, 0.28f), Limb.Weapon).With(twoHand: 1, impact: 1.2f), s, new Vector2(0.95f, 1.2f), 0.75f),
+                Make(Slot.L4, "Pole Drive", S("PoleDrive", P(-8, 30, 110, 10, 30, -20, -30, 26, 0, 0, 0, 0.08f, 40, -0.15f), P(36, 30, 110, 95, 92, -62, -86, 56, 16, 0, 6, 0.18f, 0, 0.42f), P(32, 30, 110, 90, 94, -58, -82, 54, 14, 0, 4, 0.16f, 4, 0.36f), Limb.Weapon).With(twoHand: 1, impact: 1.45f), s, new Vector2(1.15f, 1.25f)),
             };
             AltFinisher[s] = S("Sweeping Staff", P(10, 30, 110, 40, 60, -30, -50, 36, 0, 0, 0, 0.12f, 30, 0, 0.05f), P(18, 30, 110, -90, -92, -40, -60, 44, 6, 0, 0, 0.12f, 0, 0.1f, 0.5f), P(12, 30, 110, 50, 80, -30, -50, 36, -6, 0, 0, 0.08f, 30, 0, 1f), Limb.Weapon);
             m.Heavy = Make(Slot.Heavy, "Mountain Breaker", Clip.Keys("Breaker", Limb.Weapon,
@@ -536,12 +564,7 @@ namespace ProjectSorcery
             m.Air = new[]
             {
                 Make(Slot.Air1, "Air Thrust", S("AirThrust", P(-4, 30, 110, 20, 40, 40, -40, 70, 0, 0, 0, 0, 50), P(16, 30, 110, 80, 70, 30, -40, 60, -10, 0, 0, 0, 0, 0.1f), P(12, 30, 110, 76, 72, 30, -40, 60, -10, 0, 0, 0, 4), Limb.Weapon), s),
-                Make(Slot.Air2, "Air Twirl", Clip.Keys("AirTwirl", Limb.Weapon,
-                    (0f, P(4, 30, 110, 70, 85, 40, -40, 70, 0, 0, 0, 0, 0), Ease.Linear),
-                    (0.8f, P(4, 30, 110, 75, 90, 40, -40, 70, 0, 0, 0, 0, -40), Ease.InOut),
-                    (1f, P(10, 30, 110, 85, 95, 40, -40, 70, 0, 0, 0, 0, 200), Ease.Out),
-                    (1.85f, P(10, 30, 110, 88, 95, 40, -40, 70, 0, 0, 0, 0, 560), Ease.Linear),
-                    (3f, P(6, 30, 110, 60, 80, 40, -40, 70, 0, 0, 0, 0, 720), Ease.Out)).With(twoHand: 0), s, null, 0.75f),
+                Make(Slot.Air2, "Air Chop", A("AirChop", P(-12, 30, 110, 170, 195, 40, -40, 70, 0, 0, -8, 0, 20), P(4, 30, 110, 140, 150, 40, -40, 70, 0, 0, 0, 0, 20), P(24, 30, 110, 70, 50, 30, -40, 60, -10, 0, 6, 0, 10), P(26, 30, 110, 55, 35, 30, -40, 60, -10, 0, 6, 0, 5), Limb.Weapon).With(twoHand: 1, impact: 1.15f), s, null, 0.75f),
             };
             m.AirHeavy = Make(Slot.AirHeavy, "Falling Mountain", A("AirSlam", P(-16, 30, 110, 175, 200, 40, -30, 70, 0, 0, -10, 0, 20), P(6, 30, 110, 145, 155, 40, -30, 70, 0, 0, 0, 0, 20), P(36, 30, 110, 70, 40, 20, -40, 60, -10, 0, 12, 0, 20, 0.1f), P(40, 30, 110, 60, 30, 20, -40, 60, -10, 0, 12, 0, 15), Limb.Weapon).With(twoHand: 1, impact: 1.5f), s);
             m.Dive = Make(Slot.Dive, "Pillar Drop", S("PillarDrop", P(-10, 30, 110, 170, 195, 50, -20, 80, 0, 0, -6, -0.05f, 0), P(20, 30, 110, 20, 0, 40, -20, 60, 20, 0, 10, 0, 0), P(20, 30, 110, 20, 0, 40, -20, 60, 20, 0, 10, 0, 0), Limb.Weapon).With(twoHand: 1, ghosts: true, impact: 1.5f), s);
@@ -558,7 +581,7 @@ namespace ProjectSorcery
                 Make(Slot.L1, "Side Swing", A("SideSwing", P(-8, 30, 110, -60, -30, -24, -32, 30, 0, 0, -4, 0, -40), P(10, 30, 110, 30, 40, -32, -48, 38, 2, 0, 0, 0, 0), P(28, 30, 110, 85, 100, -44, -64, 46, 8, 0, 0, 0.04f, 10, 0.12f), P(32, 30, 110, 110, 150, -44, -64, 46, 8, 0, 0, 0.04f, 20), Limb.Weapon).With(impact: 1.15f), s),
                 Make(Slot.L2, "Backswing", A("Backswing", P(24, 30, 110, 120, 160, -36, -56, 40, 4, 0, 0, 0, 20), P(20, 30, 110, 100, 110, -36, -56, 40, 4, 0, 0, 0, 10), P(18, 30, 110, 70, 40, -34, -50, 38, 2, 0, 0, 0.06f, 0, 0.08f), P(8, 30, 110, 0, -40, -30, -40, 34, 0, 0, 0, 0.06f, -20), Limb.Weapon), s),
                 Make(Slot.L3, "Overhead Smash", A("OverSmash", P(-18, 30, 110, 190, 215, -22, -30, 30, 0, 0, -10, 0, 25), P(4, 30, 110, 150, 160, -30, -44, 36, 2, 0, 0, 0, 20), P(40, 30, 110, 68, 35, -50, -90, 58, -14, 0, 10, 0.26f, 20, 0.14f), P(40, 30, 110, 62, 30, -50, -90, 58, -14, 0, 10, 0.26f, 18), Limb.Weapon).With(impact: 1.4f, slam: true), s),
-                Make(Slot.L4, "Spinning Swing", S("SpinSwing", P(10, 30, 110, 40, 60, -30, -50, 36, 0, 0, 0, 0.12f, 30, 0, 0.05f), P(22, 30, 110, -92, -90, -42, -62, 46, 6, 0, 0, 0.12f, 0, 0.12f, 0.5f), P(14, 30, 110, 40, 70, -34, -56, 40, 0, 0, 0, 0.08f, 60, 0, 1f), Limb.Weapon).With(impact: 1.4f), s),
+                Make(Slot.L4, "Hammer Swing", S("SpinSwing", P(10, 30, 110, 40, 60, -30, -50, 36, 0, 0, 0, 0.12f, 30, 0, 0.05f), P(22, 30, 110, -92, -90, -42, -62, 46, 6, 0, 0, 0.12f, 0, 0.12f, 0.5f), P(14, 30, 110, 40, 70, -34, -56, 40, 0, 0, 0, 0.08f, 60, 0, 1f), Limb.Weapon).With(impact: 1.4f), s),
             };
             AltFinisher[s] = A("Uppercut Swing", P(30, 30, 110, -10, -40, -50, -100, 60, -24, 0, 6, 0.3f, -40), P(20, 30, 110, 50, 50, -40, -70, 50, -10, 0, 0, 0.15f, -10), P(-14, 30, 110, 150, 180, -18, -24, 16, -2, 0, -14, -0.04f, 20), P(-16, 30, 110, 160, 190, -16, -22, 16, 0, 0, -12, 0, 25), Limb.Weapon);
             m.Heavy = Make(Slot.Heavy, "Earthshaker", Clip.Keys("Earthshaker", Limb.Weapon,

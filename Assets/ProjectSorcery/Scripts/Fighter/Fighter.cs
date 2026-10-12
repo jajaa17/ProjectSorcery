@@ -40,6 +40,9 @@ namespace ProjectSorcery
         public InputFrame In;
         public AttackDef CurAttack;
         public int ComboStep, AirStep;
+        int stringHits;          // lights landed in the current auto-combo
+        bool finisherLanded;     // the auto-combo's last hit connected: keep mashing for the signature ender
+        float stepSpeed;         // the drive of this strike's step-in (chases the target inside a connected string)
         float lastAttackEnd = -9f;
         const float ComboWindow = 0.45f;   // time after a light ends that the next press still continues the string
         public float Hitstun, Hitstop, Invuln, BurstCd, DashCd, KnockdownTime;
@@ -395,6 +398,7 @@ namespace ProjectSorcery
             {
                 // the string keeps going as long as presses keep coming (hit or whiff); a pause resets it
                 if (State != FState.Attack && M.Time - lastAttackEnd > ComboWindow) ComboStep = 0;
+                if (ComboStep == 0) stringHits = 0;
                 a = Set.Light[Mathf.Clamp(ComboStep, 0, Set.Light.Length - 1)];
                 ComboStep = (ComboStep + 1) % Set.Light.Length;
             }
@@ -412,7 +416,7 @@ namespace ProjectSorcery
             else if (bufferedFwd && !chaining) a = Set.Dash;                         // Forward + Heavy: lunging strike
             else
             {
-                // Heavy -> Heavy -> Heavy: each swing's momentum winds the body into a bigger, spinning follow-up
+                // Heavy -> Heavy -> Heavy: three planted blows, each heavier than the last (the third sits down into a slam)
                 if (!chaining) HeavyStep = 0;
                 a = Set.HeavyChain[Mathf.Clamp(HeavyStep, 0, Set.HeavyChain.Length - 1)];
                 HeavyStep = (HeavyStep + 1) % Set.HeavyChain.Length;
@@ -428,11 +432,26 @@ namespace ProjectSorcery
             hitThisAttack.Clear();
             minionsHitThisAttack.Clear();
             attackConnected = false;
+            finisherLanded = false;
             SetState(FState.Attack);
+            StateTime = 0f;   // chaining attack -> attack keeps the state, so restart the clock (or the new move skips its active frames)
             FaceTarget();
             float lungeMul = Def.Speed;
             // ground strikes step in ON the strike: a small shuffle now, the real drive late in the wind-up
             pendingStep = !a.Air && !a.DashStrike && Grounded && a.Lunge.x != 0f;
+            stepSpeed = a.Lunge.x * lungeMul;
+            // momentum through a string: once the combo has connected, each follow-up drives in far enough to land,
+            // so a mashed auto-combo carries the fight forward instead of whiffing as the opponent is knocked back
+            bool continuing = (stringHits > 0 && System.Array.IndexOf(Set.Light, a) > 0) || System.Array.IndexOf(Set.HeavyChain, a) > 0;
+            var tgt = Target;
+            if (pendingStep && continuing && tgt != null)
+            {
+                float gap = Mathf.Abs(tgt.Pos.x - Pos.x);
+                float ideal = (a.Offset.x + a.Radius * 0.35f) * Size;
+                float T = a.Startup * 0.38f + a.Active * 0.5f;
+                if (gap < 3.4f && gap > ideal && T > 0.01f)
+                    stepSpeed = Mathf.Clamp(Mathf.Max(stepSpeed, ((gap - ideal) + 14f * T * T) / T), 0f, 13f);
+            }
             if (a.Lunge.x != 0f) Vel.x = a.Lunge.x * Facing * lungeMul * (pendingStep ? 0.3f : 1f);
             if (a.Lunge.y != 0f) Vel.y = a.Lunge.y;
             if (!a.Air && Grounded && a.Lunge.x == 0f) Vel.x *= 0.3f;
@@ -444,7 +463,7 @@ namespace ProjectSorcery
             var a = CurAttack;
             if (a == null) { SetState(Grounded ? FState.Idle : FState.Air); return; }
             float t = StateTime;
-            if (pendingStep && t >= a.Startup * 0.62f && ChargeTime <= 0f) { pendingStep = false; Vel.x = a.Lunge.x * Facing * Def.Speed; }
+            if (pendingStep && t >= a.Startup * 0.62f && ChargeTime <= 0f) { pendingStep = false; Vel.x = stepSpeed * Facing; }
             if (Grounded && !a.Air && !pendingStep) Vel.x = Mathf.MoveTowards(Vel.x, 0f, 28f * dt);
             // air heavy: hang in the air through the wind-up, then plunge with the strike
             if (a.Air && (a.Flags & HitFlags.Heavy) != 0 && (a.Flags & HitFlags.Spike) == 0 && !Grounded)
@@ -485,6 +504,12 @@ namespace ProjectSorcery
                 && t >= a.Startup + a.Active + a.Recovery * 0.55f)
             {
                 if (TryBuffered(Grounded)) return;
+            }
+            // auto-combo ender: still mashing Light after the finisher lands -> the fighter's own signature technique
+            if (recovering && finisherLanded && buffered == Act.Light)
+            {
+                int ender = AutoComboEnder();
+                if (ender >= 0) { Consume(); if (TryCast(ender)) return; }
             }
             // cancel windows: after a connected hit, chain into anything (never during the active frames)
             if (recovering && attackConnected && buffered != Act.None)
@@ -569,6 +594,9 @@ namespace ProjectSorcery
             if (Has(StatusType.Amplification)) h.Flags |= HitFlags.PierceInfinity;
             if (M.Domains.OwnerEffect(this) == SureHit.SoulStrike) h.Flags |= HitFlags.PierceInfinity | HitFlags.Soul;
             if (Def.Has(Passive.RotBlood)) h = h.WithStatus(StatusType.Rot, 3f, 6f);
+            // auto-combo finisher: mash Light and, if the earlier hits landed, the last one hangs longer on contact
+            bool finisher = Set.Light.Length >= 3 && a == Set.Light[Set.Light.Length - 1] && stringHits >= 2;
+            if (finisher) h.Hitstop *= 1.4f;
 
             // ---- BLACK FLASH ----
             bool blackFlash = false;
@@ -613,6 +641,15 @@ namespace ProjectSorcery
             }
             if (res == HitResult.Hit)
             {
+                if ((a.Flags & HitFlags.Light) != 0) stringHits++;
+                if (finisher) finisherLanded = true;
+                if (finisher && !blackFlash)
+                {
+                    // the cinematic beat: ink impact frame, zoom + aberration, a breath of slow motion
+                    VFX.ImpactFrame(ImpactKind.Heavy, point);
+                    CameraRig.Moment(point, 0.55f);
+                    M.SlowMo(0.3f, 0.14f);
+                }
                 if ((a.Flags & HitFlags.Light) != 0)
                 {
                     // open the black flash window: the heavy must land in this rhythm after the light connects
@@ -816,6 +853,23 @@ namespace ProjectSorcery
             if (Def.Has(Passive.SixEyes) && !ab.IsDomain) c *= 0.6f;
             if (Def.Has(Passive.Restricted)) c *= 0.75f;
             return c;
+        }
+
+        /// <summary>
+        /// The technique a mashed auto-combo ends in: the first ready offensive skill in the fighter's kit (never the
+        /// ultimate). Every character's kit is unique, so every character's auto-combo ends in their own signature move.
+        /// </summary>
+        int AutoComboEnder()
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                var ab = Kit[i];
+                if (ab == null || ab is DomainAb) continue;
+                var u = ab.Use;
+                if (u != AIUse.Attack && u != AIUse.Projectile && u != AIUse.Gapclose && u != AIUse.Finisher && u != AIUse.Area && u != AIUse.Summon && u != AIUse.Zone) continue;
+                if (CanCast(i)) return i;
+            }
+            return -1;
         }
 
         public bool CanCast(int slot)
