@@ -179,6 +179,25 @@ namespace ProjectSorcery
             for (int i = 0; i < n; i++) Emit(I.sparks, p, Rnd(speed * 0.3f, speed), Color.Lerp(c, Color.white, Random.Range(0f, 0.5f)), size * Random.Range(0.6f, 1.4f), Random.Range(0.15f, 0.4f));
         }
 
+        /// <summary>Hit spark sprayed along the blow's actual direction (spikes spray down, launchers spray up).</summary>
+        public static void HitSpark(Vector2 p, Vector2 dir, Color c, bool heavy)
+        {
+            if (I == null) return;
+            if (dir.sqrMagnitude < 0.01f) dir = Vector2.right;
+            float ang = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+            int n = Q(heavy ? 22 : 10);
+            for (int i = 0; i < n; i++)
+            {
+                float a = (ang + Random.Range(heavy ? -55f : -40f, heavy ? 55f : 40f)) * Mathf.Deg2Rad;
+                Emit(I.sparks, p, new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * Random.Range(6f, heavy ? 24f : 14f), Color.Lerp(c, Color.white, Random.Range(0.2f, 0.8f)), Random.Range(0.08f, 0.16f), Random.Range(0.12f, 0.3f));
+            }
+            Emit(I.glow, p, Vector2.zero, c.WithA(0.9f), heavy ? 2.4f : 1.3f, 0.12f);
+            Emit(I.glow, p, Vector2.zero, Color.white, heavy ? 1.1f : 0.6f, 0.08f);
+            I.FlashSprite(p, Art.Ring, Art.AddSoft, c, 0.3f, heavy ? 2.2f : 1.2f, 0.16f);
+            if (heavy) SpeedBurst(p, c, 10, 2.2f, 4.5f);
+            I.ArcLine(p, ang + Random.Range(-25f, 25f), 0.5f, heavy ? 1.1f : 0.75f, heavy ? 140f : 110f, Color.white, heavy ? 0.1f : 0.07f, 0.1f);
+        }
+
         public static void HitSpark(Vector2 p, int dir, Color c, bool heavy)
         {
             if (I == null) return;

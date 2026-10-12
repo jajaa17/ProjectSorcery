@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace ProjectSorcery
 {
+    /// <summary>How a hit body reacts, picked from the angle and force of the blow (drives the flight physics and poses).</summary>
+    public enum Reaction { None, Stagger, Blowback, Launch, Spike, GroundBounce, Crumple, WallSplat }
+
     public enum FState { Idle, Run, Air, Attack, Cast, Block, Hitstun, Knockdown, GetUp, Dash, Dead, Victory, Locked, RCT, SimpleDomain, Respawning }
 
     public enum DamageType { Blunt, Slash, Pierce, Fire, Ice, Electric, Water, Blood, Soul, Energy, Gravity, Poison, Light, Sound, Count }

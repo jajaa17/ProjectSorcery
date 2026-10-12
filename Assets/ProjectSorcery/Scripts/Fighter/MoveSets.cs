@@ -78,6 +78,28 @@ namespace ProjectSorcery
             return p;
         }
 
+        /// <summary>
+        /// True when the striking limb travels down onto the target: from the end of the wind-up to contact the hand
+        /// (or foot) drops a long way. Read from the keyframes, so new moves are classified automatically.
+        /// </summary>
+        public static bool IsOverhead(Clip c)
+        {
+            if (c == null) return false;
+            float Height(in Kf k)
+            {
+                switch (c.Smear)
+                {
+                    case Limb.HandB: return k.HBy;
+                    case Limb.FootF: return -(Mathf.Cos(k.ThF * Mathf.Deg2Rad) + Mathf.Cos(k.ShF * Mathf.Deg2Rad)) * 0.5f;
+                    case Limb.FootB: return -(Mathf.Cos(k.ThB * Mathf.Deg2Rad) + Mathf.Cos(k.ShB * Mathf.Deg2Rad)) * 0.5f;
+                    case Limb.Hands: return Mathf.Max(k.HFy, k.HBy);
+                    default: return k.HFy;   // front hand, weapons
+                }
+            }
+            float wound = Height(c.Sample(0.9f)), hit = Height(c.Sample(1f));
+            return wound - hit > 0.45f && wound > 0.15f;
+        }
+
         static Pose Ground(Pose p)
         {
             float t = Mathf.Repeat(p.Tn, 1f);
@@ -162,6 +184,7 @@ namespace ProjectSorcery
             }
             a.Name = name;
             a.Clip = clip;
+            a.Overhead = IsOverhead(clip);
             a.Startup *= st.Speed; a.Recovery *= st.Speed;
             a.Damage *= st.Damage;
             if (offset.HasValue) a.Offset = offset.Value;
@@ -272,7 +295,7 @@ namespace ProjectSorcery
             AttackDef Fin(AttackDef a) { var c = a.Copy(); c.Finisher = true; return c; }
             AttackDef Derive(AttackDef data, string name, Clip clip, bool finisher)
             {
-                var c = data.Copy(); c.Name = name; c.Clip = clip; c.Chargeable = false; c.DashStrike = false; c.Finisher = finisher;
+                var c = data.Copy(); c.Name = name; c.Clip = clip; c.Chargeable = false; c.DashStrike = false; c.Finisher = finisher; c.Overhead = IsOverhead(clip);
                 return c;
             }
             var lastL = Fin(L[n - 1]);

@@ -59,6 +59,7 @@ static class SimTests
         if (mode == "balance") Balance(args.Length > 1 ? int.Parse(args[1]) : 16);
         if (mode == "tune") Tune(int.Parse(args[1]), int.Parse(args[2]));
         if (mode == "art") ExportArt(args.Length > 1 ? args[1] : "art");
+        if (mode == "music") ExportMusic((Track)Enum.Parse(typeof(Track), args[1]), args[2]);
         if (mode == "anim") ExportAnim(args.Length > 1 ? args[1] : "anim", args.Length > 2 ? args[2] : "vessel");
 
         Console.WriteLine($"Done in {sw.Elapsed.TotalSeconds:F1}s, failures: {failures}");
@@ -359,6 +360,27 @@ static class SimTests
     // ------------------------------------------------------------------ animation preview export
     // Plays a scripted move showcase per fighter against a dummy and records the solved skeleton every tick
     // (the exact output of RigSolver), for rendering preview GIFs outside Unity.
+    // Renders a procedural music track to a 16-bit mono WAV (to audition it outside Unity)
+    static void ExportMusic(Track t, string path)
+    {
+        var d = MusicGen.Make(t);
+        using var w = new System.IO.BinaryWriter(System.IO.File.Create(path));
+        int rate = MusicGen.Rate, n = d.Length;
+        w.Write("RIFF".ToCharArray()); w.Write(36 + n * 2); w.Write("WAVE".ToCharArray());
+        w.Write("fmt ".ToCharArray()); w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(rate); w.Write(rate * 2); w.Write((short)2); w.Write((short)16);
+        w.Write("data".ToCharArray()); w.Write(n * 2);
+        foreach (var v in d) w.Write((short)Math.Clamp((int)(v * 32767f), -32768, 32767));
+        Console.WriteLine($"wrote {path}: {n / (float)rate:F1}s");
+    }
+
+    static IEnumerable<string> OverheadNames(Fighter f)
+    {
+        var set = f.Set;
+        var all = new List<AttackDef>(set.Light) { set.Heavy, set.Launcher, set.Sweep, set.Dash, set.AirHeavy, set.Dive };
+        all.AddRange(set.HeavyChain); all.AddRange(set.Air); all.AddRange(set.Routes.Values);
+        return all.Where(a => a != null && a.Overhead).Select(a => "\"" + a.Name + "\"").Distinct();
+    }
+
     static void ExportAnim(string dir, string idList)
     {
         System.IO.Directory.CreateDirectory(dir);
@@ -388,6 +410,8 @@ static class SimTests
                 script.Add(("route " + r, Route(r + "L"), true));   // trailing press = mash for the ender
             script.Add(("light string", Seq((IB.Light, 1), (0, 15), (IB.Light, 1), (0, 15), (IB.Light, 1), (0, 17), (IB.Light, 1), (0, 40)), true));
             script.Add(("heavy", Seq((IB.Heavy, 1), (0, 55)), true));
+            script.Add(("wall splat", Route("LLLHLH"), true));
+            script.Add(("overhead", Route("H"), true));
             script.Add(("charged heavy", Seq((IB.Heavy, 46), (0, 55)), true));
             script.Add(("heavy string", Seq((IB.Heavy, 1), (0, 20), (IB.Heavy, 1), (0, 22), (IB.Heavy, 1), (0, 60)), true));
             script.Add(("forward heavy", Seq((IB.Right | IB.Heavy, 1), (IB.Right, 4), (0, 50)), true));
@@ -399,10 +423,16 @@ static class SimTests
 
             using var w = new System.IO.StreamWriter(System.IO.Path.Combine(dir, id + ".jsonl"));
             var col = me.Def.Look.Aura;
-            w.WriteLine($"{{\"id\":\"{id}\",\"name\":\"{me.Def.Title}\",\"weapon\":\"{me.Def.Look.Weapon}\",\"aura\":[{col.r:F3},{col.g:F3},{col.b:F3}],\"size\":{me.Size:F3},\"dsize\":{dummy.Size:F3}}}");
+            w.WriteLine($"{{\"id\":\"{id}\",\"name\":\"{me.Def.Title}\",\"weapon\":\"{me.Def.Look.Weapon}\",\"aura\":[{col.r:F3},{col.g:F3},{col.b:F3}],\"size\":{me.Size:F3},\"dsize\":{dummy.Size:F3},\"overheads\":[{string.Join(",", OverheadNames(me))}]}}");
             foreach (var step in script)
             {
-                if (step.place)
+                if (step.place && step.label.StartsWith("wall"))
+                {
+                    // corner: the dummy one step off the right wall, so heavy blows splat it
+                    me.Pos = me.PrevPos = new Vector2(m.Arena.Right - 3.4f, 0f); me.Vel = Vector2.zero; me.Facing = 1;
+                    dummy.Pos = dummy.PrevPos = new Vector2(m.Arena.Right - 1.5f, 0f); dummy.Vel = Vector2.zero; dummy.Hp = dummy.MaxHp;
+                }
+                else if (step.place)
                 {
                     dummy.Pos = dummy.PrevPos = new Vector2(Math.Clamp(me.Pos.x + 1.9f, m.Arena.Left + 1f, m.Arena.Right - 1f), 0f);
                     dummy.Vel = Vector2.zero; dummy.Hp = dummy.MaxHp;
@@ -432,6 +462,7 @@ static class SimTests
                         sv.SmearSegment(limb, true, out var a1, out var b1);
                         sb.Append($",\"limb\":\"{limb}\",\"sm\":[[{a0.x:F3},{a0.y:F3},{b0.x:F3},{b0.y:F3}],[{a1.x:F3},{a1.y:F3},{b1.x:F3},{b1.y:F3}]]");
                         sb.Append(",\"st\":\"").Append(fi.State.ToString()).Append('"');
+                        sb.Append(",\"re\":\"").Append(fi.React.ToString()).Append('"');
                         sb.Append(",\"hs\":").Append(fi.Hitstop > 0f ? 1 : 0);
                         sb.Append(",\"charge\":").Append(sv.Charging ? 1 : 0);
                         sb.Append(",\"contact\":").Append(sv.Contact ? 1 : 0);

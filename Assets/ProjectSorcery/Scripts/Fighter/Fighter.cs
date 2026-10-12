@@ -87,6 +87,10 @@ namespace ProjectSorcery
         public int ForcedBlackFlashes;     // next N heavy hits are guaranteed black flashes
         public float StaggerMeter;
         public bool Launched;              // airborne from a real launch (lands in a knockdown)
+        public Reaction React;             // how the current hit is being taken (flight physics + poses)
+        public float SplatTime;            // > 0 while pinned against a wall by a wall splat
+        public int SplatSide;              // which wall (-1 left, +1 right)
+        bool wallSplatUsed, groundBounceUsed;   // once per combo each, so nothing loops
 
         // ---------- misc ----------
         public float[] Adapt = new float[(int)DamageType.Count];
@@ -254,6 +258,8 @@ namespace ProjectSorcery
         {
             if (State == s) return;
             if (State == FState.Cast && s != FState.Cast) { /* cast ended */ }
+            if (s != FState.Hitstun && s != FState.Knockdown) { React = Reaction.None; SplatTime = 0f; }
+            if (s == FState.Idle || s == FState.GetUp || s == FState.Air) { wallSplatUsed = false; groundBounceUsed = false; }
             State = s;
             StateTime = 0f;
         }
@@ -594,6 +600,14 @@ namespace ProjectSorcery
             if (Has(StatusType.Amplification)) h.Flags |= HitFlags.PierceInfinity;
             if (M.Domains.OwnerEffect(this) == SureHit.SoulStrike) h.Flags |= HitFlags.PierceInfinity | HitFlags.Soul;
             if (Def.Has(Passive.RotBlood)) h = h.WithStatus(StatusType.Rot, 3f, 6f);
+            // overheads drive the target DOWN: a heavy one bounces a standing opponent off the floor (or spikes an
+            // airborne one into it); a lighter one only knocks an airborne target down
+            if (a.Overhead && h.Knockback.y > -4f)
+            {
+                bool big = heavy || a.Finisher || (a.Clip != null && a.Clip.Impact >= 1.3f);
+                if (big) h.Knockback = new Vector2(h.Knockback.x * 0.4f, -Mathf.Max(12f, Mathf.Abs(h.Knockback.y) + 8f));
+                else if (!e.Grounded) h.Knockback = new Vector2(h.Knockback.x * 0.6f, -5f);
+            }
             // auto-combo finisher: mash Light and, if the earlier hits landed, the last one hangs longer on contact
             bool finisher = a.Finisher && route.Length >= 3 && routeHits >= 2;
             if (finisher) h.Hitstop *= 1.4f;
@@ -635,7 +649,8 @@ namespace ProjectSorcery
                 // weight: heavier blows punch the camera toward the impact
                 float impact = (a.Clip != null ? a.Clip.Impact : 1f) * (heavy ? 1f : 0.45f) * (a.Chargeable ? ChargeMul : 1f);
                 // light = micro-shake; heavy = trauma + a directional kick along the blow + zoom toward the impact
-                CameraRig.Hit(new Vector2(Facing, h.Knockback.y * 0.08f), heavy ? impact : impact * 0.8f);
+                // the frame jolts along the blow's real direction: sideways for a cross, straight down for an axe kick
+                CameraRig.Hit(h.Knockback.sqrMagnitude > 0.01f ? h.Knockback : new Vector2(Facing, 0f), heavy ? impact : impact * 0.8f);
                 if (heavy || impact > 0.5f) CameraRig.PunchAt(0.1f + 0.1f * impact, point);
                 if (chargeFull) { M.SlowMo(0.35f, 0.18f); CameraRig.Moment(point, 0.6f); }
             }
@@ -770,7 +785,16 @@ namespace ProjectSorcery
             }
             if (Grounded && Vel.y <= 0f)
             {
-                if (Hitstun <= 0f)
+                if (Hitstun <= 0f && React == Reaction.Crumple && !IsBoss)
+                {
+                    // the crumple finishes folding onto the floor
+                    Juggle = 0;
+                    SetState(FState.Knockdown);
+                    KnockdownTime = 0.5f;
+                    VFX.Dust(Pos, 6);
+                    Audio.Play(Sfx.Land, Pos, 0.6f, 0.75f);
+                }
+                else if (Hitstun <= 0f)
                 {
                     Juggle = 0;
                     SetState(FState.Idle);
@@ -1091,6 +1115,22 @@ namespace ProjectSorcery
             if (strike != null && !strike.Gravity) g = 0f;
             if (State == FState.Dash && !Grounded) g = 0f;
             if (Has(StatusType.Gravity)) g *= 1.8f;
+            if (State == FState.Hitstun && !Grounded)
+            {
+                // anime flight: an explosive start (the first beat after hit-stop is undamped), then heavy air drag
+                // bleeds the speed, and the body hangs at the top of the arc before it drops
+                if (StateTime > 0.06f && React != Reaction.Spike) Vel.x *= 1f - Mathf.Min(0.5f, 2.4f * dt);
+                if ((React == Reaction.Launch || React == Reaction.GroundBounce) && Mathf.Abs(Vel.y) < 3f) g *= 0.45f;
+                if (React == Reaction.Spike) g *= 1.5f;
+            }
+            if (SplatTime > 0f)
+            {
+                // pinned flat against the wall for a beat, then peeled off and dropped
+                SplatTime -= dt;
+                Vel = Vector2.zero;
+                g = 0f;
+                if (SplatTime <= 0f) Vel = new Vector2(-SplatSide * 2.5f, 1.5f);
+            }
             if (!Grounded || Vel.y > 0f) Vel.y -= g * dt;
             if (Vel.y < -24f) Vel.y = -24f;
 
@@ -1104,12 +1144,19 @@ namespace ProjectSorcery
                 Pos.y = 0f;
                 if (Vel.y < 0f)
                 {
-                    // ground bounce from spikes / hard knockdowns
-                    if (State == FState.Hitstun && Vel.y < -14f)
+                    // ground bounce from spikes / hard knockdowns (once per combo, then they stay down)
+                    if (State == FState.Hitstun && (Vel.y < -14f || React == Reaction.Spike) && !groundBounceUsed && !IsBoss)
                     {
-                        Vel.y = -Vel.y * 0.45f;
+                        groundBounceUsed = true;
+                        React = Reaction.GroundBounce;
+                        Vel.y = Mathf.Max(7f, -Vel.y * 0.45f);
+                        Vel.x *= 0.6f;
+                        Launched = true;
+                        Hitstun = Mathf.Max(Hitstun, 0.45f);
                         VFX.GroundImpact(Pos, Def.Look.Aura);
-                        CameraRig.Shake(0.3f);
+                        VFX.Dust(Pos, 10);
+                        CameraRig.Kick(Vector2.down, 0.3f);
+                        CameraRig.PunchAt(0.25f, Pos);
                         Audio.Play(Sfx.Land, Pos, 1f, 0.6f);
                     }
                     else Vel.y = 0f;
@@ -1118,11 +1165,30 @@ namespace ProjectSorcery
             }
             else Grounded = false;
 
-            // walls (wall splat when slammed)
+            // walls: the move above is a swept step, so a body flying fast enough to cross the wall this tick is caught
+            // at the wall line. The first hard impact of a combo splats them flat; after that they ricochet off.
             if (Pos.x < A.Left || Pos.x > A.Right)
             {
                 Pos.x = Mathf.Clamp(Pos.x, A.Left, A.Right);
-                if (State == FState.Hitstun && Mathf.Abs(Vel.x) > 11f)
+                if (State == FState.Hitstun && Mathf.Abs(Vel.x) > 9f && !wallSplatUsed && !IsBoss && !dead)
+                {
+                    wallSplatUsed = true;
+                    React = Reaction.WallSplat;
+                    SplatSide = Pos.x <= A.Left ? -1 : 1;
+                    SplatTime = 0.38f;
+                    Hitstun = Mathf.Max(Hitstun, SplatTime + 0.3f);
+                    Hitstop = Mathf.Max(Hitstop, 0.07f);      // the splat itself freezes for a beat
+                    Launched = true;
+                    float speed = Mathf.Abs(Vel.x);
+                    Vel = Vector2.zero;
+                    Vector2 at = new Vector2(Pos.x, Pos.y + 1.1f * Size);
+                    VFX.WallImpact(at, -SplatSide, Def.Look.Aura);
+                    VFX.ImpactFrame(ImpactKind.Heavy, at);
+                    CameraRig.Kick(new Vector2(SplatSide, 0f), 0.25f + speed * 0.01f);
+                    CameraRig.Moment(at, 0.45f);
+                    Audio.Play(Sfx.PunchHeavy, Pos, 1f, 0.5f);
+                }
+                else if (State == FState.Hitstun && Mathf.Abs(Vel.x) > 11f)
                 {
                     Vel.x = -Vel.x * 0.35f;
                     Vel.y = Mathf.Max(Vel.y, 4f);
@@ -1143,7 +1209,7 @@ namespace ProjectSorcery
                 else if (State == FState.Hitstun)
                 {
                     // only real launches (or very long juggles) end on the floor; light pops just stagger
-                    bool hard = (Launched && (Juggle >= 2 || Hitstun > 0.15f)) || Juggle >= 6;
+                    bool hard = (Launched && (Juggle >= 2 || Hitstun > 0.15f || React >= Reaction.Spike)) || Juggle >= 6;
                     Launched = false;
                     if (hard && !Has(StatusType.Armor) && !IsBoss)
                     {

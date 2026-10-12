@@ -144,7 +144,7 @@ namespace ProjectSorcery
             if (!h.Has(HitFlags.BlackFlash))
             {
                 bool heavy = h.Has(HitFlags.Heavy) || dmg > 60f;
-                VFX.HitSpark(h.Point, h.Knockback.x >= 0 ? 1 : -1, h.Color, heavy);
+                VFX.HitSpark(h.Point, h.Knockback, h.Color, heavy);
                 if (heavy && h.Source != HitSource.Domain) { VFX.ImpactFrame(ImpactKind.Heavy, h.Point); CameraRig.Punch(0.18f); }
                 Audio.Play(HitSound(h), h.Point, heavy ? 1f : 0.75f, Random.Range(0.92f, 1.08f));
             }
@@ -193,6 +193,8 @@ namespace ProjectSorcery
             Vel = kb;
             Launched = Mathf.Abs(kb.y) > 5f || (Launched && inCombo && !Grounded);
             if (kb.y > 0.5f) Grounded = false;
+            SplatTime = 0f;   // a hit knocks a splatted body off the wall
+            ClassifyReaction(kb, h);
             // hitstun decays through a combo so nothing loops forever; past a hard cap the victim breaks free
             float stun = h.Hitstun * (inCombo ? Mathf.Max(0.35f, 1f - 0.065f * Juggle) : 1f);
             Hitstun = Mathf.Max(stun, State == FState.Hitstun ? Hitstun * 0.4f : 0f);
@@ -210,6 +212,43 @@ namespace ProjectSorcery
             StateTime = 0f;
             Audio.Play(Sfx.Hurt, Center, 0.35f, Random.Range(0.9f, 1.15f));
             return HitResult.Hit;
+        }
+
+        /// <summary>
+        /// Directional reactions: the blow's angle and force decide how the body takes it.
+        /// Downward blows on a standing target bounce them off the floor (hard) or buckle them into a crumple (softer);
+        /// downward blows in the air spike them into the floor. The velocity is set now but only applied once
+        /// hit-stop ends, so the freeze frame happens first and the launch explodes out of it.
+        /// </summary>
+        void ClassifyReaction(Vector2 kb, in HitInfo h)
+        {
+            if (kb.y < -4f)
+            {
+                if (!Grounded) { React = Reaction.Spike; Vel.y = Mathf.Min(kb.y * 1.25f, -15f); Launched = true; return; }
+                if (kb.y <= -11f && !groundBounceUsed && !IsBoss)
+                {
+                    // driven into the floor so hard the body rebounds: a free juggle for the attacker
+                    React = Reaction.GroundBounce;
+                    groundBounceUsed = true;
+                    Vel = new Vector2(kb.x * 0.45f, 9f);
+                    Grounded = false; Launched = true;
+                    Hitstun = Mathf.Max(Hitstun, 0.55f);
+                    VFX.GroundImpact(Pos, h.Color);
+                    VFX.Dust(Pos, 10);
+                    CameraRig.Kick(Vector2.down, 0.35f);
+                    CameraRig.PunchAt(0.3f, Pos);
+                    Audio.Play(Sfx.Land, Pos, 1f, 0.55f);
+                    return;
+                }
+                // knees buckle and the body folds to the floor
+                React = Reaction.Crumple;
+                Vel = new Vector2(kb.x * 0.15f, 0f);
+                Hitstun = Mathf.Max(Hitstun, IsBoss ? 0.3f : 0.62f);
+                return;
+            }
+            if (kb.y > 5f) React = Reaction.Launch;
+            else if (Mathf.Abs(kb.x) > 6f) React = Reaction.Blowback;
+            else React = Reaction.Stagger;
         }
 
         static Sfx HitSound(in HitInfo h)

@@ -14,10 +14,12 @@ namespace ProjectSorcery
         readonly GameObject root;
         readonly LineRenderer legs, torso, arms, head, caRed, caCyan, legsGlow, armsGlow, torsoGlow, headGlow, hair, face, eye, weapon, extraArms, crown, marker;
         readonly Smear smearA, smearB;
+        readonly ModeAura modeAura;
+        bool modeWasOn;
+        float boltClock;
         float idleTime, ghostClock, chargeFx;
         Vector2 tailPos, tailVel;
         bool tailInit;
-        float rainbow;
 
         public Vector2 RenderPos => S.RenderPos;
         public Vector2 Hip => S.Hip;
@@ -61,6 +63,7 @@ namespace ProjectSorcery
             caCyan = Art.NewLine(t, "AberrationC", Art.AddLine, Art.OrderFighterGlow, w * 0.9f, CaPts);
             hair.numCapVertices = 2; face.numCapVertices = 2;
             extraArms.enabled = f.Def.Look.FourArms;
+            modeAura = new ModeAura(t);
             smearA = new Smear(t, "SmearA");
             smearB = new Smear(t, "SmearB");
         }
@@ -101,7 +104,13 @@ namespace ProjectSorcery
                 else if (clip.Impact >= 1.3f) VFX.Dust(f.Pos, 4);
                 if (clip.Aura) VFX.Burst(BurstVis.Shockwave, S.HandF, 1.3f * f.Size, aura);
             }
-            if (clip != null && clip.Ghosts && S.Striking)
+            // a body blasted through the air leaves a smeared trail of itself behind
+            if (f.State == FState.Hitstun && f.Vel.sqrMagnitude > 121f && f.SplatTime <= 0f)
+            {
+                ghostClock -= dt;
+                if (ghostClock <= 0f) { ghostClock = 0.04f; VFX.Afterimage(f, 0.16f); }
+            }
+            else if (clip != null && clip.Ghosts && S.Striking)
             {
                 ghostClock -= dt;
                 if (ghostClock <= 0f) { ghostClock = 0.035f; VFX.Afterimage(f, 0.2f); }
@@ -118,6 +127,8 @@ namespace ProjectSorcery
                 }
             }
 
+            PowerMode(dt);
+
             // smear arcs during the snap of a strike
             Limb limb = clip != null ? clip.Smear : (f.State == FState.Dash ? Limb.None : Limb.None);
             bool emit = S.Striking && limb != Limb.None && !f.Dead;
@@ -128,6 +139,55 @@ namespace ProjectSorcery
             bool two = limb == Limb.Hands;
             S.SmearSegment(limb, true, out var a1, out var b1);
             smearB.Tick(dt, emit && two, a1, b1);
+        }
+
+        /// <summary>
+        /// Transformation / power-mode aura (DBZ style): which modes get one, and in what colour.
+        /// Jackpot burns green, the thunder god's beast form crackles electric blue, the zone burns red-black,
+        /// overtime glows gold, and any other power-up flares in the fighter's own colour.
+        /// </summary>
+        bool ModeOf(out Color c, out float power, out bool electric)
+        {
+            electric = false; power = 1f;
+            if (f.Has(StatusType.Jackpot)) { c = new Color(0.2f, 1f, 0.4f); return true; }
+            if (f.Has(StatusType.PowerUp) && f.Def.Id == "thunder") { c = new Color(0.45f, 0.9f, 1f); electric = true; return true; }
+            if (f.Has(StatusType.Zone)) { c = new Color(1f, 0.12f, 0.15f); power = 0.85f; return true; }
+            if (f.Has(StatusType.Overtime)) { c = new Color(1f, 0.82f, 0.3f); power = 0.8f; return true; }
+            if (f.Has(StatusType.PowerUp)) { c = f.Def.Look.Aura; power = 0.6f; return true; }
+            c = Color.white; power = 0f;
+            return false;
+        }
+
+        void PowerMode(float dt)
+        {
+            bool on = ModeOf(out var c, out float power, out bool electric) && !f.Dead;
+            modeAura.Tick(dt, S, f.Size, on, c, power);
+            if (on && !modeWasOn)
+            {
+                // the moment the mode ignites: the aura flares out, the floor kicks up, the lens jolts
+                VFX.Burst(BurstVis.Shockwave, S.RenderPos + Vector2.up * f.Size, 2.4f * f.Size, c);
+                VFX.Ring(f.Center, c, 3f * f.Size, 0.35f, 0.12f);
+                VFX.Dust(f.Pos, 14);
+                CameraRig.Shake(0.3f);
+                CameraRig.PunchAt(0.25f, f.Center);
+                Audio.Play(Sfx.Charge, f.Center, 0.9f, 0.8f);
+            }
+            modeWasOn = on;
+            if (!on) return;
+            VFX.AuraTick(S.RenderPos, 2.4f * f.Size, Color.Lerp(c, Color.white, 0.3f), 0.9f);
+            if (f.Grounded && Random.value < 0.06f) VFX.Dust(f.Pos, 1);
+            if (electric)
+            {
+                // arcs of lightning crawl over and off the body
+                boltClock -= dt;
+                if (boltClock <= 0f)
+                {
+                    boltClock = Random.Range(0.04f, 0.1f);
+                    Vector2 a = Vector2.Lerp(S.Hip, S.Neck, Random.value) + Random.insideUnitCircle * 0.3f * f.Size;
+                    Vector2 b = a + Random.insideUnitCircle.normalized * Random.Range(0.6f, 1.3f) * f.Size;
+                    VFX.Lightning(a, b, Random.value < 0.3f ? Color.white : c, Random.Range(0.03f, 0.07f), 0.07f, 6);
+                }
+            }
         }
 
         // =====================================================================
@@ -143,7 +203,7 @@ namespace ProjectSorcery
             if (f.Has(StatusType.Freeze)) body = new Color(0.65f, 0.9f, 1f);
             if (f.Has(StatusType.Paralysis) || f.Has(StatusType.Stun)) { if (Random.value < 0.15f) VFX.Info(S.HeadC); }
             if (f.Has(StatusType.Sealed) || f.Has(StatusType.Burnout)) { glowA *= 0.3f; if (Random.value < 0.04f) VFX.Puff(S.HeadC + Vector2.up * 0.3f, new Color(0.3f, 0.3f, 0.3f), 0.4f); }
-            if (f.Has(StatusType.Jackpot)) { rainbow += Time.unscaledDeltaTime * 0.8f; glow = Color.HSVToRGB(Mathf.Repeat(rainbow, 1f), 0.8f, 1f); glowA = 0.45f; VFX.AuraTick(S.RenderPos, 2.2f, glow, 0.6f); }
+            if (f.Has(StatusType.Jackpot)) { glow = new Color(0.25f, 1f, 0.45f); glowA = 0.45f; }
             if (f.Has(StatusType.Zone)) { glow = Color.Lerp(new Color(0.9f, 0.05f, 0.1f), Color.black, Mathf.PingPong(idleTime * 3f, 1f)); glowA = 0.4f; VFX.AuraTick(S.RenderPos, 2f, new Color(1f, 0.1f, 0.15f), 0.35f); }
             if (f.Has(StatusType.Gravity) || f.Has(StatusType.Sink)) body = Color.Lerp(body, new Color(0.3f, 0.2f, 0.45f), 0.4f);
             if (f.Casting != null || f.State == FState.RCT) { glowA = 0.4f; VFX.AuraTick(S.RenderPos, 2.1f * f.Size, f.Casting != null ? f.Casting.Color : new Color(0.6f, 1f, 0.75f), f.ChantLevel > 0 ? 1f : 0.55f); }

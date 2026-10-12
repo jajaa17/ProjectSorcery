@@ -47,6 +47,31 @@ namespace ProjectSorcery
             Pose.P(20, 20, 40, 30, 60, -30, -50, 36, -4, 0, 20, 0.18f).ToKf(),
         };
 
+        // ---- flight and impact poses (sold by silhouette: arched spine, trailing limbs, folded spikes)
+        // limbs trail toward the attacker (+ angles) because the body is flying away from them
+        static readonly Kf ArchK = Pose.P(-42, 35, 70, 20, 55, 30, 70, 10, 45, 0, -48, 0).ToKf();          // rising: spine arched back, head whipped
+        static readonly Kf HangK = Pose.P(-28, 95, 125, 70, 105, 45, 15, -15, -30, 0, -25, 0).ToKf();       // apex: limp, limbs spread
+        static readonly Kf FallK = Pose.P(-10, 150, 175, 135, 165, 60, 95, 30, 70, 0, 12, 0).ToKf();        // dropping: limbs trail upward
+        static readonly Kf SpikeK = Pose.P(60, 170, 178, 160, 175, 95, 120, 70, 100, -30, 40, 0).ToKf();    // spiked: folded, head-first
+        static readonly Kf BounceK = Pose.P(-55, 165, 185, 140, 175, 75, 115, 45, 95, 0, -45, 0).ToKf();   // off the floor: bent back, limbs flung
+        static readonly Kf SplatK = Pose.P(-14, -125, -155, -105, -140, -28, -18, 22, 12, 0, -32, 0, 0, -0.12f).ToKf();   // flat on the wall
+        static readonly float[] CrumpleTimes = { 0f, 0.12f, 0.32f, 0.55f };
+        static readonly Kf[] CrumpleK =
+        {
+            Pose.P(36, 20, 0, 30, 10, -30, -70, 45, -40, 0, 30, 0.25f).ToKf(),      // gut folds
+            Pose.P(48, 10, -10, 20, 0, -50, -120, 75, -70, 0, 40, 0.45f).ToKf(),    // knees buckle
+            Pose.P(58, 0, -20, 10, -10, -70, -160, 95, -100, 0, 45, 0.6f).ToKf(),   // dropping to the knees
+            Pose.P(70, -10, -30, 0, -20, -80, -170, 100, -110, 0, 50, 0.6f).ToKf(), // folding over
+        };
+
+        /// <summary>Launch arc pose from vertical velocity: arched on the way up, limp at the hang, trailing on the drop.</summary>
+        static Kf ArcPose(float vy)
+        {
+            if (vy > 2.5f) return Kf.Lerp(HangK, ArchK, Mathf.Clamp01((vy - 2.5f) / 5f));
+            if (vy < -2.5f) return Kf.Lerp(HangK, FallK, Mathf.Clamp01((-vy - 2.5f) / 6f));
+            return HangK;
+        }
+
         static Kf SampleKeys(Kf[] keys, float[] times, float t)
         {
             int n = keys.Length;
@@ -391,6 +416,29 @@ namespace ProjectSorcery
                 case FState.RCT: k = Anim.Cast(FPose.Channel).Sample(1.2f); k.Lean += Mathf.Sin(idleTime * 3f) * 2f; return k;
                 case FState.Hitstun:
                     omega = 28f; zeta = 0.4f;
+                    switch (f.React)
+                    {
+                        case Reaction.Crumple:
+                            hurtMode = true; omega = 20f; zeta = 0.55f; id = -61;
+                            return SampleKeys(CrumpleK, CrumpleTimes, f.StateTime);
+                        case Reaction.WallSplat when f.SplatTime > 0f:
+                            omega = 44f; zeta = 0.45f; id = -62;            // slams flat, a little rebound wobble
+                            return SplatK;
+                        case Reaction.Spike when !f.Grounded:
+                            omega = 36f; zeta = 0.5f; id = -63;
+                            return SpikeK;
+                        case Reaction.GroundBounce when !f.Grounded:
+                            omega = 30f; zeta = 0.42f; id = -64;
+                            k = Kf.Lerp(BounceK, FallK, Mathf.Clamp01(-f.Vel.y / 8f));
+                            k.Rot = Mathf.Clamp(-f.Vel.y * 3f - 30f, -80f, 10f);
+                            return k;
+                        case Reaction.Launch when !f.Grounded:
+                        case Reaction.WallSplat when !f.Grounded:
+                            omega = 26f; zeta = 0.45f; id = -65;
+                            k = ArcPose(f.Vel.y);
+                            k.Rot = Mathf.Clamp(-f.Vel.y * 2.2f - 15f, -60f, 25f);   // the body tilts along its path
+                            return k;
+                    }
                     if (f.Grounded && hurtKind != 2)
                     {
                         hurtMode = true;
