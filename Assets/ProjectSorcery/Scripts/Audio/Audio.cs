@@ -51,7 +51,7 @@ namespace ProjectSorcery
             // compose the music off the main thread
             var t = new Thread(() =>
             {
-                foreach (var tr in new[] { Track.Menu, Track.Battle, Track.Domain, Track.Raid })
+                foreach (var tr in new[] { Track.Menu, Track.Battle, Track.Domain, Track.Raid, Track.Phonk })
                 {
                     float[] d;
                     try { d = MusicGen.Make(tr); } catch { d = new float[MusicGen.Rate]; }
@@ -105,6 +105,14 @@ namespace ProjectSorcery
 
         public static void PlayMusic(Track t) { wanted = t; }
 
+        static bool JackpotActive()
+        {
+            var m = Match.I;
+            if (m == null || m.Ended) return false;
+            for (int i = 0; i < m.Fighters.Count; i++) if (!m.Fighters[i].Dead && m.Fighters[i].Has(StatusType.Jackpot)) return true;
+            return false;
+        }
+
         /// <summary>Called once per frame by GameRoot.</summary>
         public static void Update(float dt)
         {
@@ -126,14 +134,17 @@ namespace ProjectSorcery
             if (duckTimer > 0f) { duckTimer -= dt; if (duckTimer <= 0f) duck = 1f; }
             else duck = Mathf.MoveTowards(duck, 1f, dt * 2f);
 
-            if (wanted != current && (wanted == Track.None || music.ContainsKey(wanted)))
+            // a jackpot hijacks the soundtrack: phonk for as long as the fever lasts, then back to whatever was playing
+            var want = JackpotActive() && music.ContainsKey(Track.Phonk) ? Track.Phonk : wanted;
+            if (want != current && (want == Track.None || music.ContainsKey(want)))
             {
+                bool hardCut = want == Track.Phonk;
                 // start crossfade
                 var incoming = aActive ? musicB : musicA;
-                if (wanted != Track.None) { incoming.clip = music[wanted]; incoming.time = 0f; incoming.Play(); }
+                if (want != Track.None) { incoming.clip = music[want]; incoming.time = 0f; incoming.Play(); }
                 aActive = !aActive;
-                current = wanted;
-                fade = 0f;
+                current = want;
+                fade = hardCut ? 0.85f : 0f;   // the phonk slams in on the jackpot instead of fading
             }
             fade = Mathf.Min(1f, fade + dt / 1.2f);
             float target = Settings.Music * Settings.Master * 0.55f * duck;

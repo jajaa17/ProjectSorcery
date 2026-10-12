@@ -194,6 +194,48 @@ namespace ProjectSorcery
         // ---------------------------------------------------------- processors
         public float Coef(float hz) => 1f - (float)Math.Exp(-2.0 * Math.PI * Math.Max(10f, hz) / Rate);
 
+        /// <summary>
+        /// The phonk cowbell: two detuned square waves (the classic 808 cowbell ratio of ~1.48) through a bright
+        /// band-pass, with a fast attack and a short metallic tail.
+        /// </summary>
+        public void Cowbell(float start, float freq, float amp, float decay = 0.11f)
+        {
+            int s0 = (int)(start * Rate), n = (int)((decay * 6f) * Rate);
+            double f1 = freq, f2 = freq * 1.48;
+            float lp = 0f, hpIn = 0f, hpOut = 0f;
+            float a = 1f - (float)Math.Exp(-2.0 * Math.PI * 5200.0 / Rate);   // lowpass ~5.2 kHz
+            float r = (float)Math.Exp(-2.0 * Math.PI * 450.0 / Rate);           // highpass ~450 Hz
+            for (int i = 0; i < n && s0 + i < Len; i++)
+            {
+                if (s0 + i < 0) continue;
+                float t = i / (float)Rate;
+                float sq = (Math.Sin(2 * Math.PI * f1 * t) >= 0 ? 1f : -1f) + (Math.Sin(2 * Math.PI * f2 * t) >= 0 ? 1f : -1f);
+                lp += a * (sq - lp);
+                hpOut = r * (hpOut + lp - hpIn); hpIn = lp;
+                float env = t < 0.002f ? t / 0.002f : (float)(0.7 * Math.Exp(-t / (decay * 0.25f)) + 0.3 * Math.Exp(-t / decay));
+                Buf[s0 + i] += hpOut * env * amp * 0.5f;
+            }
+        }
+
+        /// <summary>808 bass: a sine that drops from a punchy click pitch onto the note, long decay, saturated.</summary>
+        public void Bass808(float start, float dur, float freq, float amp, float glideFrom = 0f, float drive = 2.2f)
+        {
+            int s0 = (int)(start * Rate), n = (int)(dur * Rate);
+            double phase = 0;
+            float norm = (float)Math.Tanh(drive);
+            for (int i = 0; i < n && s0 + i < Len; i++)
+            {
+                if (s0 + i < 0) continue;
+                float t = i / (float)Rate;
+                double f = freq * (1.0 + 1.6 * Math.Exp(-t / 0.012));                      // punch at the attack
+                if (glideFrom > 0f) f *= Math.Pow(glideFrom / freq, Math.Exp(-t / 0.06));   // slide in from the last note
+                phase += 2 * Math.PI * f / Rate;
+                float env = (t < 0.003f ? t / 0.003f : 1f) * (float)Math.Exp(-t / (dur * 0.55f));
+                float rel = i > n - 400 ? (n - i) / 400f : 1f;
+                Buf[s0 + i] += (float)Math.Tanh(Math.Sin(phase) * drive) / norm * env * rel * amp;
+            }
+        }
+
         public void Distort(float drive, float from = 0f, float to = 999f)
         {
             int a = (int)(from * Rate), b = Math.Min(Len, (int)(to * Rate));

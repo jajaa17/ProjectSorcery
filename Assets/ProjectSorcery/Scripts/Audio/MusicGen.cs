@@ -1,6 +1,6 @@
 namespace ProjectSorcery
 {
-    public enum Track { None, Menu, Battle, Domain, Raid }
+    public enum Track { None, Menu, Battle, Domain, Raid, Phonk }
 
     /// <summary>Procedurally composed, seamlessly looping music. Runs on a worker thread at boot.</summary>
     public static class MusicGen
@@ -15,6 +15,7 @@ namespace ProjectSorcery
                 case Track.Battle: return Battle(150f, false);
                 case Track.Raid: return Battle(168f, true);
                 case Track.Domain: return Domain();
+                case Track.Phonk: return Phonk();
                 default: return new float[Rate];
             }
         }
@@ -140,6 +141,55 @@ namespace ProjectSorcery
             s.Reverb(0.5f, 1.8f, 0.2f);
             var outp = s.FoldLoop((int)(loop * Rate));
             Normalize(outp, 0.8f);
+            return outp;
+        }
+
+        /// <summary>
+        /// Drift phonk for the jackpot: a dark cowbell riff over distorted 808 slides, a hard kick, a snapping clap
+        /// on 2 and 4, rattling triplet hats and a murmured vocal chop, all pushed through saturation.
+        /// </summary>
+        static float[] Phonk()
+        {
+            float bpm = 136f, beat = 60f / bpm, step = beat / 4f, bar = beat * 4f;
+            int bars = 8;
+            float loop = bar * bars;
+            var s = new Synth(loop + 2.5f, Rate, 1337u);
+            // F minor: i  i  VI  VII  i  i  iv  V
+            int[] roots = { 41, 41, 37, 39, 41, 41, 46, 36 };
+            // cowbell riff (semitones above the root, -99 = rest) over 16 steps; the B half answers the A half
+            int[] riffA = { 12, -99, 12, 15, -99, 12, 19, -99, 17, -99, 15, 12, -99, 15, 12, 10 };
+            int[] riffB = { 12, -99, 12, 15, -99, 12, 19, -99, 22, -99, 20, 19, -99, 17, 15, 12 };
+            int lastBass = 0;
+            for (int b = 0; b < bars; b++)
+            {
+                float t0 = b * bar;
+                int root = roots[b];
+                var riff = (b % 2 == 0) ? riffA : riffB;
+                for (int q = 0; q < 16; q++)
+                {
+                    float tt = t0 + q * step + (q % 2 == 1 ? step * 0.12f : 0f);   // a little swing
+                    if (riff[q] > -99) s.Cowbell(tt, Synth.Midi(root + 36 + riff[q]), q % 4 == 0 ? 0.42f : 0.32f);
+                    // drums: kick on 1, the "and" of 2 and 3; clap on 2 and 4
+                    if (q == 0 || q == 6 || q == 10 || (b % 4 == 3 && q == 14)) s.Drum(tt, 160f, 42f, 1.0f, 0.09f, 0.45f);
+                    if (q == 4 || q == 12) { s.Snare(tt, 0.55f); s.NoiseBurst(tt, 0.12f, 0.35f, 0.001f, 0.03f, 9000f, 4000f, 1500f, 1500f); }
+                    s.Hat(tt, q % 4 == 2 ? 0.14f : 0.08f);
+                }
+                // triplet hat rolls at the end of every other bar
+                if (b % 2 == 1) for (int k = 0; k < 6; k++) s.Hat(t0 + bar - beat + k * beat / 6f, 0.06f + k * 0.012f, 0.02f);
+                // 808 slides: long notes on the kicks, gliding between roots
+                int bassNote = root - 12;
+                s.Bass808(t0, beat * 1.5f, Synth.Midi(bassNote), 0.55f, lastBass != 0 && lastBass != bassNote ? Synth.Midi(lastBass) : 0f);
+                s.Bass808(t0 + beat * 1.5f, beat * 1f, Synth.Midi(bassNote), 0.45f);
+                s.Bass808(t0 + beat * 2.5f, beat * 1.5f, Synth.Midi(bassNote + (b % 2 == 1 ? 3 : 0)), 0.5f, Synth.Midi(bassNote));
+                lastBass = bassNote + (b % 2 == 1 ? 3 : 0);
+                // murmured vocal chop and a dark pad underneath
+                if (b % 2 == 0) s.Whisper(t0 + beat * 0.5f, beat * 1.2f, 0.07f, 5f, 900f);
+                if (b % 4 == 0) s.Saw(t0, bar * 4f - 0.2f, Synth.Midi(root + 24), 0.05f, 0.4f, 1f, 700f, 0.01f, 0.4f, 0.002f);
+            }
+            s.Distort(1.8f);
+            s.Reverb(0.12f, 0.9f);
+            var outp = s.FoldLoop((int)(loop * Rate));
+            Normalize(outp, 0.85f);
             return outp;
         }
 
